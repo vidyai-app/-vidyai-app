@@ -1208,6 +1208,10 @@ ${urlTxt.slice(0,6000)}`;
     </div>
   );
 
+  if(authSc==="splash"){
+    const ls=document.getElementById("loading-screen");
+    if(ls){ls.classList.add("hide");setTimeout(()=>ls.remove(),600);}
+  }
   if(authSc==="splash") return(
     <div style={{minHeight:"100vh",background:AB,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",paddingTop:"8vh",padding:"8vh 24px 40px",fontFamily:"'Sora',sans-serif",textAlign:"center",overflowY:"auto"}}>
       <style>{AS}</style>
