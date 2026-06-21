@@ -1186,13 +1186,7 @@ ${urlTxt.slice(0,6000)}`;
   const AB2={width:"100%",padding:"16px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#2dd4bf,#0d9488)",color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer",fontFamily:"inherit",letterSpacing:0.4,boxShadow:"0 6px 24px rgba(45,212,191,0.4)"};
   const AS=`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800;900&display=swap');@keyframes vFadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}@keyframes vFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}@keyframes vSpin{to{transform:rotate(360deg)}}@keyframes vGlow{0%,100%{box-shadow:0 0 18px rgba(45,212,191,0.4)}50%{box-shadow:0 0 38px rgba(45,212,191,0.8)}}@keyframes vPop{0%{transform:scale(0.8);opacity:0}100%{transform:scale(1);opacity:1}}*{box-sizing:border-box;margin:0;padding:0}input::placeholder{color:rgba(148,163,184,0.4)}input:focus{border-color:rgba(45,212,191,0.6)!important;box-shadow:0 0 0 3px rgba(45,212,191,0.12)!important;outline:none}`;
 
-  // Force splash if loading takes too long
-  const shouldForceSplash = authSc === "loading";
-  const displaySc = (authSc === "loading" && Date.now() - (window._vidyaiLoadStart || 0) > 3000) ? "splash" : authSc;
-  
-  if(!window._vidyaiLoadStart && authSc === "loading") window._vidyaiLoadStart = Date.now();
-
-  if(displaySc==="loading") return(
+  if(authSc==="loading") return(
     <div style={{minHeight:"100vh",background:AB,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Sora',sans-serif"}}>
       <style>{AS}</style>
       <div style={{textAlign:"center"}}>
@@ -1203,7 +1197,7 @@ ${urlTxt.slice(0,6000)}`;
     </div>
   );
 
-  if(displaySc==="splash") return(
+  if(authSc==="splash") return(
     <div style={{minHeight:"100vh",background:AB,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"28px 24px",fontFamily:"'Sora',sans-serif",textAlign:"center"}}>
       <style>{AS}</style>
       <div style={{animation:"vFloat 3s ease-in-out infinite",marginBottom:18}}><AuthLogo/></div>
