@@ -428,33 +428,54 @@ function Vidyai() {
 
   // Firebase Auth state listener — handles session restore on any device
   useEffect(()=>{
-    const unsub = fbAuth.onAuthStateChanged(async(fbUser)=>{
-      if(fbUser){
-        try{
-          const userData = await loadUserData(fbUser.uid);
-          if(userData){
-            // Check PRO expiry
-            let isStillPro=userData.isPro;
-            if(userData.isPro&&userData.proExpiry&&new Date(userData.proExpiry)<new Date()){
-              isStillPro=false;
-              await saveUserData(fbUser.uid,{isPro:false,proExpired:true});
+    console.log("[Vidyai] Setting up auth listener...");
+    let isMounted = true;
+    
+    try {
+      const unsub = fbAuth.onAuthStateChanged(async(fbUser)=>{
+        console.log("[Vidyai] Auth state changed:", fbUser ? fbUser.email : "no user");
+        if(!isMounted) return;
+        
+        if(fbUser){
+          try{
+            const userData = await loadUserData(fbUser.uid);
+            if(!isMounted) return;
+            
+            if(userData){
+              // Check PRO expiry
+              let isStillPro=userData.isPro;
+              if(userData.isPro&&userData.proExpiry&&new Date(userData.proExpiry)<new Date()){
+                isStillPro=false;
+                await saveUserData(fbUser.uid,{isPro:false,proExpired:true});
+              }
+              setCurUser({...userData,uid:fbUser.uid,email:fbUser.email,isPro:isStillPro});
+              if(isStillPro) setIsPro(true);
+              setAuthSc("app");
+            } else {
+              // User in Auth but no Firestore doc — create basic record
+              const basic = {name:fbUser.email.split("@")[0], email:fbUser.email, isPro:false, createdAt:new Date().toISOString(), points:0};
+              await saveUserData(fbUser.uid, basic);
+              setCurUser({...basic, uid:fbUser.uid});
+              setAuthSc("app");
             }
-            setCurUser({...userData,uid:fbUser.uid,email:fbUser.email,isPro:isStillPro});
-            if(isStillPro) setIsPro(true);
-            setAuthSc("app");
-          } else {
-            // User in Auth but no Firestore doc — create basic record
-            const basic = {name:fbUser.email.split("@")[0], email:fbUser.email, isPro:false, createdAt:new Date().toISOString(), points:0};
-            await saveUserData(fbUser.uid, basic);
-            setCurUser({...basic, uid:fbUser.uid});
-            setAuthSc("app");
+          }catch(e){
+            console.error("[Vidyai] Auth error:", e);
+            setAuthSc("splash");
           }
-        }catch{ setAuthSc("splash"); }
-      } else {
-        setAuthSc("splash");
-      }
-    });
-    return ()=>unsub();
+        } else {
+          console.log("[Vidyai] No user, showing splash");
+          setAuthSc("splash");
+        }
+      });
+      console.log("[Vidyai] Auth listener registered");
+      return ()=>{
+        isMounted = false;
+        unsub();
+      };
+    } catch(e) {
+      console.error("[Vidyai] Failed to set up auth listener:", e);
+      setAuthSc("splash");
+    }
   },[]);
 
   const doSignup=async()=>{
