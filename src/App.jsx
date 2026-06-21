@@ -1,0 +1,2246 @@
+import { useState, useRef, useEffect } from 'react';
+
+/* ═══════════════════════════════════════════
+   VIDYAI — Original invention by Mohammed Arshad V M
+   Zoraak Technologies © 2025 · Patent Pending
+   Unauthorized copying strictly prohibited
+   ═══════════════════════════════════════════ */
+
+// OpenRouter API — via secure Netlify function (key hidden server-side)
+const AI_ENDPOINTS = ["/.netlify/functions/ai", "/api/ai"];
+async function aiCall(msgs, sys = "", tok = 1400) {
+  // Build OpenRouter-compatible messages (supports images)
+  const outMsgs = [];
+  if(sys) outMsgs.push({role:"system", content: sys});
+  for(const m of msgs){
+    if(Array.isArray(m.content)){
+      const parts = m.content.map(c => {
+        if(c.type === "image"){
+          return {type:"image_url", image_url:{url:`data:${c.source.media_type};base64,${c.source.data}`}};
+        }
+        return {type:"text", text: c.text||""};
+      });
+      outMsgs.push({role: m.role||"user", content: parts});
+    } else {
+      outMsgs.push({role: m.role||"user", content: m.content||""});
+    }
+  }
+
+  let lastError = "";
+  for (const endpoint of AI_ENDPOINTS) {
+    try {
+      const r = await fetch(endpoint, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({messages: outMsgs, max_tokens: tok})
+      });
+      const text = await r.text();
+      let d;
+      try { d = JSON.parse(text); } catch { d = null; }
+      if (r.ok) {
+        return (d && d.result) ? d.result : (typeof text === 'string' ? text : "");
+      }
+      lastError = d?.error || text || `HTTP ${r.status}`;
+    } catch (err) {
+      lastError = err.message || String(err);
+    }
+  }
+  throw new Error("AI API Error: " + lastError);
+}
+
+const SR_API = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function speakText(txt, voice, onDone) {
+  window.speechSynthesis.cancel();
+  const clean = (txt||"").replace(/[✅❌🟡❓🎉⭐🔊🎙️⏹🏆🔁📄🌟💪📚🗣️🇺🇸🎓🎵🪞🎤📺💼☕🎭]/g,"").slice(0,700);
+  const u = new SpeechSynthesisUtterance(clean);
+  u.rate=0.88; u.pitch=1.0; u.volume=1;
+  if (voice) u.voice=voice;
+  if (onDone) u.onend=onDone;
+  window.speechSynthesis.speak(u);
+}
+
+/* ═══════ DATA ═══════ */
+const THEMES = [
+  {id:"teal",   name:"Ocean Teal",  a:"#2dd4bf", b:"#0d9488"},
+  {id:"sky",    name:"Sky Blue",    a:"#38bdf8", b:"#0284c7"},
+  {id:"violet", name:"Soft Violet", a:"#a78bfa", b:"#7c3aed"},
+  {id:"forest", name:"Forest",      a:"#6ee7b7", b:"#059669"},
+  {id:"rose",   name:"Muted Rose",  a:"#fda4af", b:"#e11d48"},
+  {id:"amber",  name:"Warm Amber",  a:"#fcd34d", b:"#d97706"},
+];
+
+const QUOTES = [
+  {q:"The secret of getting ahead is getting started.",a:"Mark Twain"},
+  {q:"An investment in knowledge pays the best interest.",a:"Benjamin Franklin"},
+  {q:"Education is the most powerful weapon to change the world.",a:"Nelson Mandela"},
+  {q:"The beautiful thing about learning is nobody can take it away from you.",a:"B.B. King"},
+  {q:"The expert in anything was once a beginner.",a:"Helen Hayes"},
+  {q:"Great things never come from comfort zones.",a:"Roy T. Bennett"},
+  {q:"Hard work beats talent when talent doesn't work hard.",a:"Tim Notke"},
+  {q:"Believe you can and you're halfway there.",a:"Theodore Roosevelt"},
+  {q:"It does not matter how slowly you go as long as you don't stop.",a:"Confucius"},
+  {q:"You don't have to be great to start, but start to be great.",a:"Zig Ziglar"},
+  {q:"Every accomplishment starts with the decision to try.",a:"JFK"},
+  {q:"Be so good they can't ignore you.",a:"Steve Martin"},
+  {q:"The only way to do great work is to love what you do.",a:"Steve Jobs"},
+  {q:"You are braver than you believe, stronger than you seem.",a:"A.A. Milne"},
+  {q:"Learning is a treasure that follows its owner everywhere.",a:"Chinese Proverb"},
+  {q:"Push yourself — no one else is going to do it for you.",a:"Unknown"},
+  {q:"Your future is created by what you do today, not tomorrow.",a:"Robert Kiyosaki"},
+  {q:"Dream big. Start small. Act now.",a:"Robin Sharma"},
+  {q:"Success is the sum of small efforts repeated every day.",a:"Robert Collier"},
+  {q:"Don't watch the clock; do what it does — keep going.",a:"Sam Levenson"},
+  {q:"A reader lives a thousand lives before he dies.",a:"George R.R. Martin"},
+  {q:"Difficulties in life make us better, not bitter.",a:"Dan Reeves"},
+];
+
+
+const MOCK_SCENARIOS = [
+  {id:"interview",icon:"💼",title:"Job Interview",desc:"AI HR interviewer — real questions, real pressure",color:"#818cf8",
+    sys:"You are a professional HR manager at a top US company conducting a real job interview. Ask ONE question at a time. React naturally to answers — follow up if vague. Be professional but warm. Start with a friendly greeting and your first question. Max 2-3 sentences per turn."},
+  {id:"coffee",icon:"☕",title:"Coffee Shop Chat",desc:"Order food, make small talk — casual everyday American",color:"#34d399",
+    sys:"You are a friendly talkative American barista. Have a natural casual conversation. Use American slang naturally. Be warm and chatty. Start by greeting them as they walk in. Max 2-3 sentences per turn."},
+  {id:"debate",icon:"🎭",title:"Debate Club",desc:"Argue a position, defend your view — build real confidence",color:"#fb7185",
+    sys:"You are a debate moderator. Present an interesting topic (like 'Should social media have age limits?'), ask the student to pick a side, then challenge their arguments respectfully. Max 2-3 sentences per turn."},
+  {id:"news",icon:"📺",title:"News Anchor",desc:"Formal broadcast American English discussions",color:"#fbbf24",
+    sys:"You are a CNN-style news anchor interviewing a guest expert on a current topic. Be professional and engaging. Start with a broadcast-style intro. Max 2-3 sentences per turn."},
+];
+
+const GK_TOPICS = [
+  {id:"Science & Nature", icon:"🔬", col:"#34d399"},
+  {id:"World History",    icon:"🏛️", col:"#fbbf24"},
+  {id:"Geography",        icon:"🌍", col:"#818cf8"},
+  {id:"Technology & AI",  icon:"💻", col:"#a78bfa"},
+  {id:"Sports",           icon:"⚽", col:"#fb7185"},
+  {id:"Current Affairs",  icon:"📰", col:"#f472b6"},
+  {id:"Mathematics",      icon:"📐", col:"#38bdf8", pro:true},
+  {id:"Space & Astronomy",icon:"🚀", col:"#fb923c", pro:true},
+];
+
+/* ═══════ MINI COMPONENTS ═══════ */
+function VLogo({s=40,a,b}) {
+  return (
+    <svg width={s} height={s} viewBox="0 0 52 52">
+      <defs><linearGradient id="vlg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor={a}/><stop offset="100%" stopColor={b}/>
+      </linearGradient></defs>
+      <path d="M26 2 L49 14 L49 38 L26 50 L3 38 L3 14 Z" fill="url(#vlg)" opacity="0.95"/>
+      <path d="M14 17 L26 35 L38 17" stroke="white" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      <circle cx="26" cy="11" r="2.5" fill="white" opacity="0.85"/>
+      <circle cx="20" cy="12.5" r="1.5" fill="white" opacity="0.45"/>
+      <circle cx="32" cy="12.5" r="1.5" fill="white" opacity="0.45"/>
+    </svg>
+  );
+}
+
+function MicBtn({on,onClick,sz=82,a,b}) {
+  return (
+    <div onClick={onClick} style={{position:"relative",width:sz,height:sz,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      {on&&[1,2,3].map(i=><span key={i} style={{position:"absolute",inset:0,borderRadius:"50%",border:`2px solid ${a}70`,animation:"vRipple 1.6s ease-out infinite",animationDelay:`${i*0.45}s`}}/>)}
+      <div style={{width:sz*0.76,height:sz*0.76,borderRadius:"50%",background:on?"linear-gradient(145deg,#f87171,#dc2626)":`linear-gradient(145deg,${a},${b})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:sz*0.33,boxShadow:on?`0 0 0 6px rgba(248,113,113,0.15),0 8px 32px rgba(220,38,38,0.45)`:`0 0 0 6px ${a}18,0 8px 30px ${a}48`,transition:"all 0.3s"}}>
+        {on?"⏹":"🎙️"}
+      </div>
+    </div>
+  );
+}
+
+function Waveform({active,a,b}) {
+  const [bars,setBars]=useState(Array(22).fill(8));
+  useEffect(()=>{
+    if(!active){setBars(Array(22).fill(8));return;}
+    const t=setInterval(()=>setBars(Array(22).fill(0).map(()=>8+Math.random()*82)),95);
+    return()=>clearInterval(t);
+  },[active]);
+  return (
+    <div style={{display:"flex",gap:2.5,alignItems:"center",height:48,justifyContent:"center"}}>
+      {bars.map((h,i)=><div key={i} style={{width:3,borderRadius:99,height:`${h}%`,background:active?`linear-gradient(180deg,${a},${b})`:"rgba(255,255,255,0.1)",transition:active?"height 0.09s":"none"}}/>)}
+    </div>
+  );
+}
+
+function ScoreRing({score,total,sz=68}) {
+  const pct=total>0?score/total:0,r=(sz-10)/2,circ=2*Math.PI*r;
+  const col=pct>=0.7?"#34d399":pct>=0.4?"#fbbf24":"#f87171";
+  return (
+    <div style={{position:"relative",width:sz,height:sz}}>
+      <svg width={sz} height={sz} style={{transform:"rotate(-90deg)",position:"absolute"}}>
+        <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={9}/>
+        <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke={col} strokeWidth={9} strokeDasharray={circ} strokeDashoffset={circ*(1-pct)} strokeLinecap="round" style={{transition:"stroke-dashoffset 0.85s ease"}}/>
+      </svg>
+      <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <span style={{fontSize:sz*0.24,fontWeight:900,color:col,lineHeight:1}}>{score}</span>
+        <span style={{fontSize:sz*0.15,color:"#64748b"}}>/{total}</span>
+      </div>
+    </div>
+  );
+}
+
+function Toggle({on,onChange,a,b}) {
+  return (
+    <div onClick={()=>onChange(!on)} style={{width:52,height:28,borderRadius:99,background:on?`linear-gradient(135deg,${a},${b})`:"rgba(100,116,139,0.25)",cursor:"pointer",position:"relative",transition:"background 0.3s",flexShrink:0}}>
+      <div style={{position:"absolute",top:3,left:on?26:3,width:22,height:22,borderRadius:"50%",background:"#fff",boxShadow:"0 2px 6px rgba(0,0,0,0.2)",transition:"left 0.24s"}}/>
+    </div>
+  );
+}
+
+const ProBadge=()=><span style={{fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"linear-gradient(135deg,#fbbf24,#f59e0b)",color:"#000",letterSpacing:0.8,flexShrink:0}}>PRO</span>;
+
+function Confetti({show}) {
+  const [pts,setPts]=useState([]);
+  useEffect(()=>{
+    if(!show)return;
+    setPts(Array.from({length:48},(_,i)=>({id:i,x:Math.random()*100,delay:Math.random()*0.8,color:["#2dd4bf","#fbbf24","#f87171","#a78bfa","#34d399","#38bdf8","#fb923c","#6ee7b7"][i%8],size:5+Math.random()*10,round:Math.random()>0.5})));
+    const t=setTimeout(()=>setPts([]),3800);
+    return()=>clearTimeout(t);
+  },[show]);
+  if(!pts.length)return null;
+  return (
+    <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999,overflow:"hidden"}}>
+      {pts.map(p=><div key={p.id} style={{position:"absolute",left:`${p.x}%`,top:"-14px",width:p.size,height:p.size,background:p.color,borderRadius:p.round?"50%":"2px",animation:`vCfFall 3.2s ${p.delay}s ease-in forwards`}}/>)}
+    </div>
+  );
+}
+
+
+/* ═══════ FIREBASE INIT ═══════ */
+const FB_CFG = {
+  apiKey: "AIzaSyAvcnDcYnSvVZ1kQQvyg9sZ7bsI80d4wE4",
+  authDomain: "vidyai-app-zoraak.firebaseapp.com",
+  projectId: "vidyai-app-zoraak",
+  storageBucket: "vidyai-app-zoraak.firebasestorage.app",
+  messagingSenderId: "18907545690",
+  appId: "1:18907545690:web:5bc8e6b19aa3c93ddad863"
+};
+firebase.initializeApp(FB_CFG);
+const fbAuth = firebase.auth();
+const fbDb = firebase.firestore();
+
+// Firestore compat helpers
+const fsGet = async (col, id) => { try { const r = await fbDb.collection(col).doc(id).get(); return r.exists ? r.data() : null; } catch { return null; }};
+const fsSet = async (col, id, data) => { try { await fbDb.collection(col).doc(id).set(data, {merge:true}); return true; } catch { return false; }};
+const fsDel = async (col, id) => { try { await fbDb.collection(col).doc(id).delete(); return true; } catch { return false; }};
+const fsAll = async (col) => { try { const r = await fbDb.collection(col).get(); return r.docs.map(d=>({id:d.id,...d.data()})); } catch { return []; }};
+
+// In-memory fallback when window.storage is unavailable
+const _memStore = {};
+const safeStorage = {
+  get: async (k) => {
+    if (window.storage) { try { return await window.storage.get(k); } catch { return null; } }
+    return _memStore[k] ? { value: _memStore[k] } : null;
+  },
+  set: async (k, v) => {
+    if (window.storage) { try { await window.storage.set(k, v); } catch {} }
+    _memStore[k] = v;
+  },
+  del: async (k) => {
+    if (window.storage) { try { await window.storage.delete(k); } catch {} }
+    delete _memStore[k];
+  },
+};
+
+function AuthLogo() {
+  return (
+    <svg width={68} height={68} viewBox="0 0 52 52">
+      <defs><linearGradient id="alg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#2dd4bf"/><stop offset="100%" stopColor="#0d9488"/></linearGradient></defs>
+      <path d="M26 2 L49 14 L49 38 L26 50 L3 38 L3 14 Z" fill="url(#alg)" opacity="0.95"/>
+      <path d="M14 17 L26 35 L38 17" stroke="white" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      <circle cx="26" cy="11" r="2.5" fill="white" opacity="0.85"/>
+    </svg>
+  );
+}
+
+/* ═══════ MAIN APP ═══════ */
+function Vidyai() {
+  // ─── AUTH ───
+  const [isPro,setIsPro]=useState(false);
+  const [authSc,setAuthSc]=useState("loading"); // loading|splash|login|signup|app|terms|privacy
+  const [curUser,setCurUser]=useState(null);
+  const [aName,setAName]=useState("");
+  const [aEmail,setAEmail]=useState("");
+  const [aPwd,setAPwd]=useState("");
+  const [aPwd2,setAPwd2]=useState("");
+  const [aPhone,setAPhone]=useState("");
+  const [aErr,setAErr]=useState("");
+  const [aLd,setALd]=useState(false);
+  const [showPwd,setShowPwd]=useState(false);
+  const [agreeTerms,setAgreeTerms]=useState(false);
+  const [showForgot,setShowForgot]=useState(false);
+
+  // ─── ADMIN CONFIG (dynamic — changeable without touching code) ───
+  const DEFAULT_CFG={upi:"vidyaisupport@upi",waNumb:"919567325132",price6m:"₹149",price1y:"₹249",was6m:"₹299",was1y:"₹599",adminHash:""};
+  const [adminCfg,setAdminCfg]=useState(DEFAULT_CFG);
+  const [adminPanelOpen,setAdminPanelOpen]=useState(false);
+  const [adminPwd,setAdminPwd]=useState("");
+  const [adminErr,setAdminErr]=useState("");
+  const [adminAuth,setAdminAuth]=useState(false);
+  const [adminTap,setAdminTap]=useState(0);
+  const [editCfg,setEditCfg]=useState({...DEFAULT_CFG});
+  const [adminSaved,setAdminSaved]=useState(false);
+  const [adminTab,setAdminTab]=useState("settings");
+  const [adminUsers,setAdminUsers]=useState([]);
+  const [adminUsersLd,setAdminUsersLd]=useState(false);
+  const [actCodeAttempts,setActCodeAttempts]=useState(0);
+
+  // ─── BRUTE FORCE PROTECTION ───
+  const [loginLocked,setLoginLocked]=useState(false);
+  const [lockTimer,setLockTimer]=useState(0);
+  const lockRef=useRef(null);
+
+  // ─── SESSION TIMEOUT (45 min inactivity auto-logout) ───
+  const lastActRef=useRef(Date.now());
+  const timeoutRef=useRef(null);
+  const [showTimeoutWarn,setShowTimeoutWarn]=useState(false);
+
+  // SHA-256 — used for admin panel password only
+  const hashPwd=async(pwd)=>{
+    const enc=new TextEncoder();
+    const buf=await crypto.subtle.digest("SHA-256",enc.encode(pwd+"vidyai_salt_zoraak"));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  };
+
+  // Load single user from Firestore
+  const loadUserData=async(uid)=>{
+    return await fsGet("users",uid);
+  };
+  // Save user data to Firestore
+  const saveUserData=async(uid,data)=>{
+    return await fsSet("users",uid,data);
+  };
+
+  // PRO token helpers — must be defined before useEffect
+  const makeProToken=async(email)=>{ return "firebase_managed"; };
+  const verifyProToken=async(email)=>{ return true; };
+
+  // ─── LOAD ADMIN CONFIG from Firestore ───
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const c=await fsGet("admin_config","settings");
+        if(c){setAdminCfg(prev=>({...prev,...c}));setEditCfg(prev=>({...prev,...c}));}
+      }catch{}
+    })();
+  },[]);
+
+  // ─── BRUTE FORCE — check lockout on mount ───
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const r=JSON.parse(localStorage.getItem("vd_login_lock")||"null");
+        if(r?.value){
+          const d=JSON.parse(r.value);
+          const remain=Math.ceil((d.lockedUntil-Date.now())/1000);
+          if(remain>0){setLoginLocked(true);setLockTimer(remain);startLockCountdown(remain);}
+          else{localStorage.removeItem("vd_login_lock");}
+        }
+      }catch{}
+    })();
+  },[]);
+
+  const startLockCountdown=(secs)=>{
+    clearInterval(lockRef.current);
+    let s=secs;
+    lockRef.current=setInterval(()=>{
+      s--;setLockTimer(s);
+      if(s<=0){clearInterval(lockRef.current);setLoginLocked(false);setLockTimer(0);localStorage.removeItem("vd_login_lock");}
+    },1000);
+  };
+
+  const recordFailedAttempt=async(email)=>{
+    try{
+      const r=JSON.parse(localStorage.getItem("vd_login_lock")||"null");
+      let d=r?.value?JSON.parse(r.value):{email,count:0,lockedUntil:0};
+      if(d.email!==email){d={email,count:0,lockedUntil:0};}
+      d.count++;
+      if(d.count>=5){
+        d.lockedUntil=Date.now()+30*60*1000; // 30 min lockout
+        localStorage.setItem("vd_login_lock",JSON.stringify(d));
+        setLoginLocked(true);setLockTimer(30*60);startLockCountdown(30*60);
+        return true; // locked
+      }
+      localStorage.setItem("vd_login_lock",JSON.stringify(d));
+      return false;
+    }catch{return false;}
+  };
+
+  const clearLoginAttempts=async()=>{
+    try{localStorage.removeItem("vd_login_lock");}catch{}
+    setLoginLocked(false);setLockTimer(0);clearInterval(lockRef.current);
+  };
+
+  // ─── SESSION TIMEOUT — 45 min inactivity ───
+  const resetActivity=()=>{lastActRef.current=Date.now();setShowTimeoutWarn(false);};
+  useEffect(()=>{
+    if(authSc!=="app")return;
+    const check=()=>{
+      const idle=(Date.now()-lastActRef.current)/1000/60;
+      if(idle>=45){doLogout();return;}
+      if(idle>=43){setShowTimeoutWarn(true);}
+    };
+    timeoutRef.current=setInterval(check,30000); // check every 30s
+    const events=["click","keydown","touchstart","scroll"];
+    events.forEach(e=>window.addEventListener(e,resetActivity));
+    return()=>{
+      clearInterval(timeoutRef.current);
+      events.forEach(e=>window.removeEventListener(e,resetActivity));
+    };
+  },[authSc]);
+
+  // ─── ADMIN PANEL HELPERS ───
+  const hashAdmin=async(pwd)=>{
+    const enc=new TextEncoder();
+    const buf=await crypto.subtle.digest("SHA-256",enc.encode(pwd+"admin_vidyai_zoraak"));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  };
+  const openAdminPanel=async()=>{
+    const newCount=adminTap+1;
+    setAdminTap(newCount);
+    if(newCount>=7){setAdminTap(0);setAdminPanelOpen(true);setAdminErr("");setAdminPwd("");setAdminAuth(false);}
+  };
+  const loginAdmin=async()=>{
+    if(!adminPwd.trim()){setAdminErr("Enter admin password");return;}
+    const h=await hashAdmin(adminPwd);
+    // First time: if no adminHash set, any password becomes the admin password
+    if(!adminCfg.adminHash){
+      const newCfg={...adminCfg,adminHash:h};
+      await fsSet("admin_config","settings",newCfg);
+      setAdminCfg(newCfg);setEditCfg(newCfg);setAdminAuth(true);setAdminErr("");setAdminTab("settings");
+    } else if(h===adminCfg.adminHash){
+      setAdminAuth(true);setAdminErr("");setAdminTab("settings");
+      // Load all users from Firestore
+      setAdminUsersLd(true);
+      fsAll("users").then(users=>{setAdminUsers(users);setAdminUsersLd(false);});
+    } else {
+      setAdminErr("❌ Wrong password");
+    }
+  };
+  const saveAdminCfg=async()=>{
+    try{
+      // Save to Firestore — accessible from any device
+      const ok=await fsSet("admin_config","settings",editCfg);
+      if(ok){setAdminCfg({...editCfg});setAdminSaved(true);setTimeout(()=>setAdminSaved(false),2500);}
+      else setAdminErr("Save failed — check internet connection.");
+    }catch{setAdminErr("Save failed");}
+  };
+
+  // Firebase Auth state listener — handles session restore on any device
+  useEffect(()=>{
+    const unsub = fbAuth.onAuthStateChanged(async(fbUser)=>{
+      if(fbUser){
+        try{
+          const userData = await loadUserData(fbUser.uid);
+          if(userData){
+            // Check PRO expiry
+            let isStillPro=userData.isPro;
+            if(userData.isPro&&userData.proExpiry&&new Date(userData.proExpiry)<new Date()){
+              isStillPro=false;
+              await saveUserData(fbUser.uid,{isPro:false,proExpired:true});
+            }
+            setCurUser({...userData,uid:fbUser.uid,email:fbUser.email,isPro:isStillPro});
+            if(isStillPro) setIsPro(true);
+            setAuthSc("app");
+          } else {
+            // User in Auth but no Firestore doc — create basic record
+            const basic = {name:fbUser.email.split("@")[0], email:fbUser.email, isPro:false, createdAt:new Date().toISOString(), points:0};
+            await saveUserData(fbUser.uid, basic);
+            setCurUser({...basic, uid:fbUser.uid});
+            setAuthSc("app");
+          }
+        }catch{ setAuthSc("splash"); }
+      } else {
+        setAuthSc("splash");
+      }
+    });
+    return ()=>unsub();
+  },[]);
+
+  const doSignup=async()=>{
+    setAErr("");
+    if(!aName.trim()){setAErr("Please enter your full name");return;}
+    const emailRx=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if(!emailRx.test(aEmail.trim())){setAErr("Please enter a valid email address");return;}
+    if(aPwd.length<6){setAErr("Password must be at least 6 characters");return;}
+    if(aPwd!==aPwd2){setAErr("Passwords do not match");return;}
+    if(!agreeTerms){setAErr("Please agree to Terms of Service and Privacy Policy");return;}
+    setALd(true);
+    try{
+      // Firebase Auth creates the user account
+      const cred = await fbAuth.createUserWithEmailAndPassword(aEmail.trim(), aPwd);
+      const uid = cred.user.uid;
+      const newUser = {
+        name:aName.trim(), email:aEmail.toLowerCase().trim(),
+        phone:aPhone.trim(), isPro:false, codeRedeemed:false,
+        createdAt:new Date().toISOString(), points:0,
+        agreedTerms:new Date().toISOString(), streak:0, imgUsedToday:0,
+        imgDate:new Date().toDateString()
+      };
+      // Save profile to Firestore
+      await saveUserData(uid, newUser);
+      // Update app stats
+      await fsSet("app_stats","global",{totalUsers: (await fsGet("app_stats","global"))?.totalUsers+1||1});
+      // onAuthStateChanged will handle setCurUser + setAuthSc
+    }catch(e){
+      if(e.code==="auth/email-already-in-use") setAErr("This email is already registered. Please sign in.");
+      else if(e.code==="auth/weak-password") setAErr("Password must be at least 6 characters.");
+      else if(e.code==="auth/invalid-email") setAErr("Please enter a valid email address.");
+      else setAErr("Something went wrong. Please try again.");
+    }
+    setALd(false);
+  };
+
+  const doLogin=async()=>{
+    setAErr("");
+    if(loginLocked){setAErr(`🔒 Too many failed attempts. Try again in ${Math.ceil(lockTimer/60)} min.`);return;}
+    if(!aEmail.trim()||!aPwd.trim()){setAErr("Please enter email and password");return;}
+    const emailRx=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if(!emailRx.test(aEmail.trim())){setAErr("Please enter a valid email address");return;}
+    setALd(true);
+    try{
+      await fbAuth.signInWithEmailAndPassword(aEmail.trim(), aPwd);
+      await clearLoginAttempts();
+      // onAuthStateChanged handles the rest automatically
+    }catch(e){
+      const locked=await recordFailedAttempt(aEmail.toLowerCase().trim());
+      if(e.code==="auth/user-not-found"||e.code==="auth/invalid-credential") {
+        if(locked) setAErr("🔒 Account locked for 30 minutes after too many failed attempts.");
+        else setAErr("No account found with this email. Please check and try again.");
+      } else if(e.code==="auth/wrong-password"||e.code==="auth/invalid-credential") {
+        if(locked) setAErr("🔒 Account locked for 30 minutes.");
+        else setAErr("Incorrect password. Please try again.");
+      } else if(e.code==="auth/too-many-requests") {
+        setAErr("🔒 Too many failed attempts. Please try again later or reset your password.");
+      } else setAErr("Sign in failed. Please check your email and password.");
+    }
+    setALd(false);
+  };
+
+  const doLogout=async()=>{
+    try{ await fbAuth.signOut(); }catch{}
+    setCurUser(null);setIsPro(false);setAuthSc("splash");
+    setAEmail("");setAPwd("");setAName("");setAPwd2("");setAPhone("");setAErr("");
+  };
+
+  // Sync isPro to user account — saves to Firestore
+  const activatePro=async()=>{
+    setIsPro(true);
+    try{
+      const uid=fbAuth.currentUser?.uid;
+      if(uid) await saveUserData(uid,{isPro:true,proActivatedAt:new Date().toISOString()});
+      const nu={...curUser,isPro:true};
+      setCurUser(nu);
+    }catch{}
+  };
+
+  const deactivatePro=async()=>{
+    setIsPro(false);
+    // PRO deactivated in Firestore
+  };
+
+  // Global
+  const [dark,setDark]=useState(true);
+  const [tIdx,setTIdx]=useState(0);
+  const [voices,setVoices]=useState([]);
+  const [selV,setSelV]=useState(null);
+  const [qCnt,setQCnt]=useState(5);
+  const [doRep,setDoRep]=useState(true);
+  const [timerMin,setTimerMin]=useState(0);
+  const [showConf,setShowConf]=useState(false);
+  const T=THEMES[tIdx];
+
+  // Navigation
+  const [page,setPage]=useState("home");
+  const [navStack,setNavStack]=useState(["home"]);
+  const goTo=(p)=>{setNavStack(s=>[...s,p]);setPage(p);window.scrollTo(0,0);};
+  const goBack=()=>setNavStack(s=>{const n=[...s];n.pop();const p=n[n.length-1]||"home";setPage(p);return n;});
+
+  // Timer
+  const [tSecs,setTSecs]=useState(0);
+  const [tOn,setTOn]=useState(false);
+  const tRef=useRef(null);
+  useEffect(()=>{
+    if(tOn&&tSecs>0){tRef.current=setInterval(()=>setTSecs(s=>{if(s<=1){clearInterval(tRef.current);setTOn(false);return 0;}return s-1;}),1000);}
+    return()=>clearInterval(tRef.current);
+  },[tOn]);
+  const startTimer=()=>{if(timerMin>0){setTSecs(timerMin*60);setTOn(true);}};
+
+  // PDF.js
+  useEffect(()=>{
+    if(window.pdfjsLib)return;
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";};
+    document.head.appendChild(s);
+  },[]);
+  async function readPDF(file){
+    const ab=await file.arrayBuffer();
+    const pdf=await window.pdfjsLib.getDocument({data:ab}).promise;
+    let txt="";
+    for(let i=1;i<=Math.min(pdf.numPages,20);i++){const pg=await pdf.getPage(i);const ct=await pg.getTextContent();txt+=ct.items.map(x=>x.str).join(" ")+"\n";}
+    return{text:txt.slice(0,9000),pages:pdf.numPages};
+  }
+
+  // Voices
+  useEffect(()=>{
+    const load=()=>{const vs=window.speechSynthesis.getVoices().filter(v=>v.lang.startsWith("en"));if(vs.length){setVoices(vs);setSelV(p=>p||(vs.find(v=>/female|zira|susan|karen|samantha|aria|jenny|siri/i.test(v.name))||vs[0])?.name||null);}};
+    load();window.speechSynthesis.onvoiceschanged=load;
+  },[]);
+  const curV=voices.find(v=>v.name===selV)||voices[0]||null;
+  const todayQ=QUOTES[new Date().getDate()%QUOTES.length];
+
+  /* QUIZ STATE */
+  const [imgs,setImgs]=useState([]);
+  const [pdfInfo,setPdfInfo]=useState(null);
+  const [bookTxt,setBookTxt]=useState("");
+  const [qs,setQs]=useState([]);
+  const [qPos,setQPos]=useState(0);
+  const [qSc,setQSc]=useState(0);
+  const [qAsk,setQAsk]=useState(0);
+  const [qPh,setQPh]=useState("upload");
+  const [inMode,setInMode]=useState("voice");
+  const [qLd,setQLd]=useState(false);
+  const [qFb,setQFb]=useState("");
+  const [qRes,setQRes]=useState(null);
+  const [qHist,setQHist]=useState([]);
+  const [tran,setTran]=useState("");
+  const [recing,setRecing]=useState(false);
+  const [txtAns,setTxtAns]=useState("");
+  const [aiTalking,setAiTalking]=useState(false);
+  const qRecRef=useRef(null);
+  const fileRef=useRef(null);
+  const pdfRef=useRef(null);
+
+  /* STREAK STATE */
+  const [streak,setStreak]=useState(0);
+  const [streakMsg,setStreakMsg]=useState("");
+  // Streak loaded from Firestore via curUser in onAuthStateChanged
+  useEffect(()=>{
+    if(curUser?.streak) setStreak(curUser.streak);
+  },[curUser?.streak]);
+
+  // Call this whenever a quiz session completes
+  const updateStreak=async()=>{
+    try{
+      const uid=fbAuth.currentUser?.uid;
+      if(!uid) return;
+      const userData=await loadUserData(uid);
+      const today=new Date().toDateString();
+      const yesterday=new Date(Date.now()-86400000).toDateString();
+      let count=1;
+      if(userData?.streakDate===today){return;} // already updated today
+      if(userData?.streakDate===yesterday){count=(userData.streak||0)+1;}
+      await saveUserData(uid,{streak:count, streakDate:today});
+      setStreak(count);
+      if(count===1)setStreakMsg("🔥 First day! Keep it up!");
+      else if(count%7===0)setStreakMsg(`🏆 ${count} day streak! Amazing!`);
+      else setStreakMsg(`🔥 ${count} day streak!`);
+      setTimeout(()=>setStreakMsg(""),3500);
+    }catch{}
+  };
+
+  /* DAILY IMAGE LIMIT — stored in Firestore user doc */
+  const DAILY_FREE_IMG=3;
+  const PRO_IMG=10;
+  const [imgUsedToday,setImgUsedToday]=useState(0);
+  useEffect(()=>{
+    if(!curUser) return;
+    const today=new Date().toDateString();
+    if(curUser.imgDate===today) setImgUsedToday(curUser.imgUsedToday||0);
+    else setImgUsedToday(0);
+  },[curUser?.uid]);
+
+  const addImgUsage=async(n)=>{
+    try{
+      const uid=fbAuth.currentUser?.uid;
+      if(!uid) return;
+      const today=new Date().toDateString();
+      const newCount=imgUsedToday+n;
+      await saveUserData(uid,{imgUsedToday:newCount, imgDate:today});
+      setImgUsedToday(newCount);
+    }catch{}
+  };
+
+  /* PRONUNCIATION STATE */
+  const [pronWord,setPronWord]=useState("");
+  const [pronFb,setPronFb]=useState("");
+  const [pronLd,setPronLd]=useState(false);
+
+  /* GK STATE */
+  const [gkTopic,setGkTopic]=useState(null);
+  const [gkQ,setGkQ]=useState([]);
+  const [gkPos,setGkPos]=useState(0);
+  const [gkSc,setGkSc]=useState(0);
+  const [gkPh,setGkPh]=useState("topics");
+  const [gkMode,setGkMode]=useState("voice");
+  const [gkLd,setGkLd]=useState(false);
+  const [gkFb,setGkFb]=useState("");
+  const [gkRes,setGkRes]=useState(null);
+  const [gkTr,setGkTr]=useState("");
+  const [gkRec,setGkRec]=useState(false);
+  const [gkTxt,setGkTxt]=useState("");
+  const gkRecRef=useRef(null);
+
+
+  /* MOCK STATE */
+  const [mScen,setMScen]=useState(null);
+  const [mChat,setMChat]=useState([]);
+  const [mRec,setMRec]=useState(false);
+  const [mTr,setMTr]=useState("");
+  const [mTxt,setMTxt]=useState("");
+  const [mLd,setMLd]=useState(false);
+  const [mMode,setMMode]=useState("voice");
+  const [mPh,setMPh]=useState("pick");
+  const mRecRef=useRef(null);
+  const chatBoxRef=useRef(null);
+
+  /* ASR factory */
+  const mkRec=(onR,onE)=>{
+    if(!SR_API)return null;
+    const r=new SR_API();r.continuous=false;r.interimResults=true;r.lang="en-US";
+    r.onresult=e=>onR(Array.from(e.results).map(x=>x[0].transcript).join(""));
+    r.onend=onE;r.onerror=onE;return r;
+  };
+
+  const startQRec=()=>{window.speechSynthesis.cancel();setTran("");const r=mkRec(t=>setTran(t),()=>setRecing(false));if(!r){alert("Mic unavailable — try text mode");return;}qRecRef.current=r;r.start();setRecing(true);};
+  const stopQRec=()=>{qRecRef.current?.stop();setRecing(false);};
+  const startGkRec=()=>{window.speechSynthesis.cancel();setGkTr("");const r=mkRec(t=>setGkTr(t),()=>setGkRec(false));if(!r)return;gkRecRef.current=r;r.start();setGkRec(true);};
+  const stopGkRec=()=>{gkRecRef.current?.stop();setGkRec(false);};
+  const startMRec=()=>{window.speechSynthesis.cancel();setMTr("");const r=mkRec(t=>setMTr(t),()=>setMRec(false));if(!r)return;mRecRef.current=r;r.start();setMRec(true);};
+  const stopMRec=()=>{mRecRef.current?.stop();setMRec(false);};
+
+  const readQ=(t)=>{setAiTalking(true);speakText(t,curV,()=>setAiTalking(false));};
+
+  /* Image upload */
+  const FREE_IMG=3; // per session (also daily cap for free)
+  const onImgs=(e)=>{
+    if(!isPro){
+      const remaining=DAILY_FREE_IMG-imgUsedToday;
+      if(remaining<=0){
+        alert(`⏰ Free daily limit reached!\n\nYou've used all ${DAILY_FREE_IMG} free image uploads today.\nCome back tomorrow or upgrade to PRO for unlimited sessions!`);
+        if(fileRef.current)fileRef.current.value="";
+        return;
+      }
+    }
+    const limit=isPro?PRO_IMG:Math.min(FREE_IMG, DAILY_FREE_IMG-imgUsedToday);
+    const files=Array.from(e.target.files).slice(0,limit);
+    if(!files.length)return;
+
+    // Compress and load all images properly (async)
+    const compressImg=(file)=>new Promise((resolve)=>{
+      const url=URL.createObjectURL(file);
+      const rd=new FileReader();
+      rd.onload=(ev)=>{
+        const img=new Image();
+        img.onload=()=>{
+          const canvas=document.createElement("canvas");
+          const MAX=800;
+          let w=img.width,h=img.height;
+          if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
+          canvas.width=w;canvas.height=h;
+          canvas.getContext("2d").drawImage(img,0,0,w,h);
+          const b64=canvas.toDataURL("image/jpeg",0.7).split(",")[1];
+          resolve({url,b64,mime:"image/jpeg"});
+        };
+        img.onerror=()=>resolve({url,b64:ev.target.result.split(",")[1],mime:file.type||"image/jpeg"});
+        img.src=ev.target.result;
+      };
+      rd.readAsDataURL(file);
+    });
+
+    Promise.all(files.map(f=>compressImg(f))).then(out=>{
+      // Extra size check — if b64 > 1MB, compress more
+      const finalOut=out.map(im=>{
+        if(im.b64.length>1000000){
+          try{
+            const canvas=document.createElement("canvas");
+            const img2=new Image();
+            img2.src="data:image/jpeg;base64,"+im.b64;
+            canvas.width=600;canvas.height=600;
+            const ctx=canvas.getContext("2d");
+            ctx.drawImage(img2,0,0,600,600);
+            return {...im,b64:canvas.toDataURL("image/jpeg",0.5).split(",")[1]};
+          }catch{return im;}
+        }
+        return im;
+      });
+      setImgs(finalOut);
+      setQPh("config");
+      if(!isPro)addImgUsage(files.length);
+    });
+  };
+  const [urlTxt,setUrlTxt]=useState("");
+  const [urlLink,setUrlLink]=useState("");
+  const [urlLd,setUrlLd]=useState(false);
+  const urlInRef=useRef(null);
+
+  const fetchURL=async(rawUrl)=>{
+    let url=rawUrl.trim();
+    if(!url.startsWith("http"))url="https://"+url;
+    setUrlLd(true);
+    try{
+      // jina.ai Reader API - free, no auth needed
+      const r=await fetch("https://r.jina.ai/"+url,{headers:{Accept:"text/plain","X-Return-Format":"text"}});
+      const t=await r.text();
+      const clean=t.replace(/\n{3,}/g,"\n\n").trim().slice(0,8000);
+      if(clean.length<80)throw new Error("too short");
+      setUrlTxt(clean);setUrlLink(url);setQPh("config");
+    }catch{
+      // fallback proxy
+      try{
+        const r2=await fetch("https://api.allorigins.win/get?url="+encodeURIComponent(url));
+        const d=await r2.json();
+        const clean=(d.contents||"").replace(/<[^>]+>/g," ").replace(/\s{3,}/g," ").trim().slice(0,8000);
+        if(clean.length<80)throw new Error("no content");
+        setUrlTxt(clean);setUrlLink(url);setQPh("config");
+      }catch{
+        alert("Could not fetch that URL. Try a different link or use Image/PDF instead.");
+      }
+    }
+    setUrlLd(false);
+  };
+
+  const onPDF=async(e)=>{
+    const f=e.target.files[0];if(!f)return;
+    if(!isPro){goTo("sub");return;}
+    setQLd(true);
+    try{const{text,pages}=await readPDF(f);setPdfInfo({name:f.name,pages,text});setBookTxt(text);setQPh("config");}
+    catch{alert("Could not read PDF.");}
+    setQLd(false);
+  };
+
+  /* Generate quiz */
+  const genQuiz=async()=>{
+    setQLd(true);
+    try{
+      let msgContent=[];
+      
+      if(imgs.length>0){
+        // IMAGE — send to vision model, detect Q&A or generate questions
+        imgs.forEach(im=>{
+          msgContent.push({type:"image",source:{type:"base64",media_type:im.mime,data:im.b64}});
+        });
+        msgContent.push({type:"text",text:`You are an expert teacher. Carefully read this textbook image.
+
+TASK 1 — DETECT: Does this image contain existing Questions & Answers (like a question paper, exercise, or Q&A list)?
+- If YES → Extract those EXACT questions as written. Do not change wording. Extract up to ${qCnt} questions.
+- If NO → Create ${qCnt} professional exam-style questions based on the topic/content shown. Mix types: define, explain, compare, apply.
+
+TASK 2 — EXTRACT: Also extract ALL visible text from the image for answer checking.
+
+Return in this exact format:
+QUESTIONS:
+["Question 1?","Question 2?",...]
+CONTENT:
+[all extracted text here]`});
+      } else if(pdfInfo){
+        // PDF — smart detect Q&A or generate
+        const hasQA=/(?:q\.?\s*\d+|\d+[).:]\s|ans(?:wer)?\s*:|a\s*[).])/i.test(bookTxt);
+        const smartPrompt = hasQA
+          ? `This is textbook content. It contains existing questions and answers. Extract the EXACT questions as written (up to ${qCnt}). Do not rephrase. Return ONLY a JSON array: ["Q1?","Q2?",...] — no other text.
+
+CONTENT:
+${bookTxt.slice(0,6000)}`
+          : `You are an expert teacher. Create exactly ${qCnt} professional exam-style questions from this content. Mix types: define, explain, compare, apply. Return ONLY a JSON array: ["Q1?","Q2?",...] — no other text.
+
+CONTENT:
+${bookTxt.slice(0,6000)}`;
+        msgContent=[{type:"text",text:smartPrompt}];
+      } else if(urlTxt){
+        // URL/YouTube — smart detect or generate
+        const hasQA=/(?:q\.?\s*\d+|\d+[).:]\s|ans(?:wer)?\s*:|a\s*[).])/i.test(urlTxt);
+        const smartPrompt = hasQA
+          ? `This content contains existing questions and answers. Extract the EXACT questions as written (up to ${qCnt}). Return ONLY a JSON array: ["Q1?","Q2?",...] — no other text.
+
+CONTENT:
+${urlTxt.slice(0,6000)}`
+          : `You are an expert teacher. Create exactly ${qCnt} professional exam-style questions from this content. Return ONLY a JSON array: ["Q1?","Q2?",...] — no other text.
+
+SOURCE: ${urlLink}
+CONTENT:
+${urlTxt.slice(0,6000)}`;
+        msgContent=[{type:"text",text:smartPrompt}];
+      } else {
+        throw new Error("Please upload an image, PDF, or enter a URL first.");
+      }
+
+      const resp=await aiCall([{role:"user",content:msgContent}],"",2000);
+      
+      // Parse response — handle image format with QUESTIONS: and CONTENT: sections
+      let raw=resp.trim();
+      let extractedContent="";
+      
+      if(raw.includes("QUESTIONS:") && raw.includes("CONTENT:")){
+        const qPart=raw.split("CONTENT:")[0].replace("QUESTIONS:","").trim();
+        extractedContent=raw.split("CONTENT:")[1]?.trim()||"";
+        raw=qPart;
+        if(extractedContent) setBookTxt(extractedContent);
+      }
+      
+      const jsonMatch=raw.match(/\[[\s\S]*\]/);
+      if(!jsonMatch) throw new Error("Could not read content. Please try a clearer image or shorter document.");
+      const qArr=JSON.parse(jsonMatch[0]);
+      if(!Array.isArray(qArr)||qArr.length===0) throw new Error("No questions found. Please try again.");
+      
+      if(urlTxt&&!bookTxt) setBookTxt(urlTxt);
+      setQs(qArr);setQPos(0);setQSc(0);setQAsk(0);setQHist([]);setQPh("quiz");startTimer();
+      setTimeout(()=>readQ("Ready! Question 1. "+qArr[0]),600);
+    }catch(err){
+      console.error("genQuiz error:",err);
+      alert("Error: "+err.message);
+    }
+    setQLd(false);
+  };
+
+  /* Submit quiz answer */
+  const submitQuiz=async()=>{
+    const ans=inMode==="voice"?tran:txtAns;
+    if(!ans.trim()||qLd)return;
+    setQLd(true);setTran("");setTxtAns("");
+    const q=qs[qPos];
+    const ctx=bookTxt?`\nContext: """${bookTxt.slice(0,2500)}"""\n`:"";
+    const pronInstruction=isPro&&inMode==="voice"?`\nAlso check if any KEY words in the student's spoken answer were likely mispronounced (based on common errors). If yes, add a new line starting with 🗣️ PRONUNCIATION: and give 1-2 specific corrections with the correct way to say it. If pronunciation seems fine, do NOT add the pronunciation line.`:"";
+    try{
+      const resp=await aiCall([{role:"user",content:`You are a warm encouraging teacher.${ctx}\nQuestion: "${q}"\nStudent answered: "${ans}"\n\nEvaluate in 2-3 sentences. Start with:\n✅ Correct! — if right\n🟡 Almost! — if partially correct  \n❌ Not quite. — if wrong (give correct answer)${pronInstruction}\n\nEnd on a new line with exactly one of: RESULT:CORRECT  RESULT:PARTIAL  RESULT:WRONG`}],``,900);
+      // Split pronunciation feedback if present
+      let mainFb=resp;
+      let pFb="";
+      if(isPro&&resp.includes("🗣️ PRONUNCIATION:")){
+        const parts=resp.split("🗣️ PRONUNCIATION:");
+        mainFb=parts[0].trim();
+        pFb="🗣️ "+parts[1].trim();
+      }
+      const isC=mainFb.includes("RESULT:CORRECT")||resp.includes("RESULT:CORRECT");
+      const isP=mainFb.includes("RESULT:PARTIAL")||resp.includes("RESULT:PARTIAL");
+      const fb=mainFb.replace(/\n?RESULT:(CORRECT|PARTIAL|WRONG)/g,"").trim();
+      const res=isC?"correct":isP?"partial":"wrong";
+      if(isC)setQSc(s=>s+1);
+      setQAsk(a=>a+1);
+      setQHist(prev=>[...prev.filter(x=>x.pos!==qPos),{pos:qPos,q,ans,fb,res,pronFb:pFb}]);
+      const nq=[...qs];if(!isC&&doRep)nq.push(q);setQs(nq);
+      setQRes(res);setQFb(fb);setPronFb(pFb);
+      speakText(fb+(pFb?". "+pFb.replace("🗣️ PRONUNCIATION:","Pronunciation tip:").slice(0,120):""),curV);
+    }catch{setQFb("⚠️ Evaluation error — please try again.");}
+    setQLd(false);
+  };
+
+  const nextQuestion=()=>{
+    const nx=qPos+1;setQFb("");setQRes(null);setTran("");setTxtAns("");setPronFb("");
+    if(nx>=qs.length){
+      setQPh("done");clearInterval(tRef.current);setTOn(false);
+      if(qSc/Math.max(qAsk,1)>=0.7)setTimeout(()=>setShowConf(true),300);
+      updateStreak();
+    }else{setQPos(nx);setTimeout(()=>readQ(qs[nx]),400);}
+  };
+
+  const prevQuestion=()=>{
+    if(qPos===0)return;
+    const np=qPos-1;setQFb("");setQRes(null);setTran("");setTxtAns("");setPronFb("");setQPos(np);
+    const prev=qHist.find(x=>x.pos===np);
+    if(prev){setQFb(prev.fb);setQRes(prev.res);setPronFb(prev.pronFb||"");}
+  };
+
+  const resetQuiz=()=>{setImgs([]);setPdfInfo(null);setBookTxt("");setUrlTxt("");setUrlLink("");setQs([]);setQPos(0);setQSc(0);setQAsk(0);setQHist([]);setQPh("upload");setQFb("");setQRes(null);setPronFb("");setTran("");setTxtAns("");clearInterval(tRef.current);setTOn(false);setTSecs(0);setShowConf(false);if(fileRef.current)fileRef.current.value="";if(pdfRef.current)pdfRef.current.value="";};
+
+  /* GK */
+  const loadGK=async(topic)=>{
+    if(!isPro&&GK_TOPICS.find(g=>g.id===topic)?.pro){goTo("sub");return;}
+    setGkTopic(topic);setGkPh("quiz");setGkLd(true);setGkQ([]);setGkPos(0);setGkSc(0);setGkFb("");setGkRes(null);
+    try{const r=await aiCall([{role:"user",content:`Generate exactly ${qCnt} interesting ${topic} quiz questions for students. Return ONLY JSON: [{"q":"...","a":"..."},...]`}]);const arr=JSON.parse(r.replace(/```json|```/g,"").trim());setGkQ(arr);startTimer();setTimeout(()=>readQ("Here is your first question! "+arr[0].q),400);}
+    catch{setGkQ([]);}
+    setGkLd(false);
+  };
+
+  const submitGK=async()=>{
+    const ans=gkMode==="voice"?gkTr:gkTxt;
+    if(!ans.trim()||gkLd)return;
+    setGkLd(true);setGkTr("");setGkTxt("");
+    const item=gkQ[gkPos];
+    try{const r=await aiCall([{role:"user",content:`Question: "${item.q}"\nCorrect answer: "${item.a}"\nStudent said: "${ans}"\n2 sentences. State if correct or wrong — if wrong, give correct answer. Warm and encouraging.\nEnd: RESULT:CORRECT or RESULT:WRONG`}]);const isC=r.includes("RESULT:CORRECT");if(isC)setGkSc(s=>s+1);const fb=r.replace(/\nRESULT:(CORRECT|WRONG)/g,"").trim();const nq=[...gkQ];if(!isC&&doRep)nq.push(item);setGkQ(nq);setGkRes(isC?"correct":"wrong");setGkFb(fb);speakText(fb,curV);}
+    catch{setGkFb("⚠️ Error.");}
+    setGkLd(false);
+  };
+
+  const nextGK=()=>{const nx=gkPos+1;setGkFb("");setGkRes(null);setGkTr("");setGkTxt("");if(nx>=gkQ.length){setGkPh("done");return;}setGkPos(nx);setTimeout(()=>readQ(gkQ[nx].q),300);};
+
+  /* Mock */
+  const startMock=async(scen)=>{
+    if(!isPro){goTo("sub");return;}
+    setMScen(scen);setMChat([]);setMPh("chat");setMLd(true);
+    try{const first=await aiCall([{role:"user",content:"Start the conversation now with your opening line."}],scen.sys);setMChat([{role:"ai",text:first}]);speakText(first,curV);}
+    catch{setMChat([{role:"ai",text:"Hello! I'm ready. Please say something to begin!"}]);}
+    setMLd(false);
+  };
+
+  const sendMock=async()=>{
+    const ans=mMode==="voice"?mTr:mTxt;
+    if(!ans.trim()||mLd)return;
+    const updated=[...mChat,{role:"user",text:ans}];
+    setMChat(updated);setMTr("");setMTxt("");setMLd(true);
+    setTimeout(()=>chatBoxRef.current?.scrollTo(0,99999),80);
+    try{
+      const msgs=updated.map(m=>({role:m.role==="ai"?"assistant":"user",content:m.text}));
+      const reply=await aiCall(msgs,mScen.sys+" Keep reply 2-3 sentences. Sound natural, warm, human.",600);
+      const final=[...updated,{role:"ai",text:reply}];
+      setMChat(final);speakText(reply,curV);
+      setTimeout(()=>chatBoxRef.current?.scrollTo(0,99999),80);
+    }catch{setMChat(p=>[...p,{role:"ai",text:"Sorry, could you say that again?"}]);}
+    setMLd(false);
+  };
+
+  /* STYLES */
+  const dk=dark;
+  const BG=dk?"#06090f":"#f0f4f8";
+  const SURF=dk?"rgba(9,14,26,0.94)":"rgba(255,255,255,0.94)";
+  const BDR=dk?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.09)";
+  const C1=dk?"#e2e8f0":"#0f172a";
+  const C2=dk?"#94a3b8":"#475569";
+  const C3=dk?"#475569":"#94a3b8";
+  const IBG=dk?"rgba(3,6,14,0.82)":"rgba(0,0,0,0.04)";
+  const NBG=dk?"rgba(4,7,16,0.9)":"rgba(255,255,255,0.9)";
+
+  const card={background:SURF,border:`1px solid ${BDR}`,borderRadius:20,padding:20,marginBottom:14,backdropFilter:"blur(20px)"};
+  const primaryBtn=(full)=>({padding:"13px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${T.a},${T.b})`,color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",width:full?"100%":"auto",fontFamily:"inherit",letterSpacing:0.3,boxShadow:`0 4px 18px ${T.a}44`,transition:"all 0.18s"});
+  const ghostBtn={padding:"10px 18px",borderRadius:12,border:`1px solid ${BDR}`,background:"transparent",color:C2,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"};
+  const tabRow={display:"flex",gap:4,background:IBG,borderRadius:12,padding:4,border:`1px solid ${BDR}`};
+  const tabBtn=(active)=>({flex:1,padding:"9px 6px",textAlign:"center",fontSize:13,fontWeight:700,borderRadius:9,cursor:"pointer",transition:"all 0.2s",background:active?`linear-gradient(135deg,${T.a},${T.b})`:"transparent",color:active?"#fff":C3,boxShadow:active?`0 2px 10px ${T.a}44`:"none"});
+  const qBubble={background:dk?`${T.a}1c`:`${T.a}12`,border:`1px solid ${T.a}30`,borderRadius:16,padding:"15px 18px",marginBottom:12,fontSize:16,fontWeight:600,color:dk?"#b2f5ea":T.b,lineHeight:1.65,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10};
+  const fbStyle=(r)=>({padding:"14px 16px",borderRadius:14,marginBottom:14,fontSize:14,lineHeight:1.85,color:C1,background:r==="correct"?"rgba(52,211,153,0.07)":r==="partial"?"rgba(251,191,36,0.07)":"rgba(248,113,113,0.07)",border:`1px solid ${r==="correct"?"rgba(52,211,153,0.28)":r==="partial"?"rgba(251,191,36,0.28)":"rgba(248,113,113,0.28)"}`});
+  const inputStyle={width:"100%",background:IBG,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 16px",color:C1,fontSize:15,outline:"none",fontFamily:"inherit",resize:"none",boxSizing:"border-box"};
+  const trStyle={background:dk?`${T.a}14`:`${T.a}0e`,border:`1px solid ${T.a}28`,borderRadius:12,padding:"11px 16px",fontSize:14,fontStyle:"italic",color:dk?T.a:T.b,marginBottom:14,lineHeight:1.65};
+
+  const tm=Math.floor(tSecs/60),ts=tSecs%60,urgent=tSecs<60&&tOn&&tSecs>0;
+  const totalPts=qSc+gkSc;
+  const noFullNav=["sub","about","guide","mock","profile","terms","privacy"].includes(page);
+
+  /* ── ACTIVATION CODE state ── */
+  const [actCode,setActCode]=useState("");
+  const [actErr,setActErr]=useState("");
+  const [actOk,setActOk]=useState(false);
+  const [actLd,setActLd]=useState(false);
+
+  // Master secret — change this to something only you know!
+  const ACT_SECRET="ZORAAK_VIDYAI_PRO_SECRET_2025_ARSHAD";
+
+  // Generate plan-based code: plan = "6M" or "1Y"
+  const genActCode=async(email,plan="6M")=>{
+    const enc=new TextEncoder();
+    const buf=await crypto.subtle.digest("SHA-256",enc.encode(email.toLowerCase().trim()+plan+ACT_SECRET));
+    const hash=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("").slice(0,14).toUpperCase();
+    return plan+"-"+hash;
+  };
+
+  // Verify code entered by user
+  const verifyActCode=async()=>{
+    setActErr("");setActLd(true);
+    const email=curUser?.email||"";
+    if(!email){setActErr("Please login first");setActLd(false);return;}
+
+    // Already PRO — no need to enter code again
+    if(curUser?.isPro){
+      setActErr("✅ Your account is already PRO! Login from any phone to access.");
+      setActLd(false);return;
+    }
+
+    // Code already redeemed for this account
+    if(curUser?.codeRedeemed){
+      setActErr("⚠️ Activation code was already used for this account. Contact support if you need help.");
+      setActLd(false);return;
+    }
+
+    if(actCode.trim().length<8){setActErr("Enter the activation code we sent you");setActLd(false);return;}
+
+    // Rate limit: max 5 attempts
+    if(actCodeAttempts>=5){
+      setActErr("🔒 Too many attempts. Please contact support: Vidyaisupport@gmail.com");
+      setActLd(false);return;
+    }
+
+    const enteredCode=actCode.trim().toUpperCase();
+    const plan=enteredCode.startsWith("1Y-")?"1Y":"6M";
+    const expected=await genActCode(email,plan);
+    if(enteredCode===expected){
+      const now=new Date();
+      const expiry=new Date(now);
+      if(plan==="1Y") expiry.setFullYear(expiry.getFullYear()+1);
+      else expiry.setMonth(expiry.getMonth()+6);
+      const uid=fbAuth.currentUser?.uid;
+      if(uid) await saveUserData(uid,{codeRedeemed:true,redeemedAt:now.toISOString(),proPlan:plan,proExpiry:expiry.toISOString(),isPro:true,proActivatedAt:now.toISOString()});
+      setCurUser(p=>p?{...p,codeRedeemed:true,proPlan:plan,proExpiry:expiry.toISOString()}:p);
+      setActCodeAttempts(0);
+      await activatePro();
+      setActOk(true);setActErr("");
+      setTimeout(()=>goBack(),1800);
+    } else {
+      const newAtt=actCodeAttempts+1;
+      setActCodeAttempts(newAtt);
+      const left=5-newAtt;
+      setActErr(`❌ Invalid code. ${left>0?`${left} attempt${left>1?"s":""} remaining.`:"No more attempts. Contact support."}`);
+    }
+    setActLd(false);
+  };
+
+  /* ── PROFILE state ── */
+  const [profEdit,setProfEdit]=useState(false);
+  const [profName,setProfName]=useState("");
+  const [profPhone,setProfPhone]=useState("");
+  const [profMsg,setProfMsg]=useState("");
+  const [cpOld,setCpOld]=useState("");
+  const [cpNew,setCpNew]=useState("");
+  const [cpNew2,setCpNew2]=useState("");
+  const [cpErr,setCpErr]=useState("");
+  const [cpMsg,setCpMsg]=useState("");
+  const [showDelConf,setShowDelConf]=useState(false);
+  const [totalSessions,setTotalSessions]=useState(0);
+  const [totalQAnswered,setTotalQAnswered]=useState(0);
+
+  // Update stats whenever a quiz finishes
+  useEffect(()=>{
+    if(qPh==="done"){
+      setTotalSessions(s=>s+1);
+      setTotalQAnswered(s=>s+qAsk);
+    }
+  },[qPh]);
+
+  const saveProfileEdit=async()=>{
+    if(!profName.trim()){setProfMsg("Name cannot be empty");return;}
+    try{
+      const uid=fbAuth.currentUser?.uid;
+      if(!uid){setProfMsg("⚠️ Not logged in");return;}
+      await saveUserData(uid,{name:profName.trim(),phone:profPhone.trim()});
+      const nu={...curUser,name:profName.trim(),phone:profPhone.trim()};
+      setCurUser(nu);setProfEdit(false);setProfMsg("✅ Profile updated!");
+      setTimeout(()=>setProfMsg(""),2500);
+    }catch{setProfMsg("⚠️ Could not save");}
+  };
+
+  const changePassword=async()=>{
+    setCpErr("");setCpMsg("");
+    if(!cpOld||!cpNew||!cpNew2){setCpErr("Fill all fields");return;}
+    if(cpNew.length<6){setCpErr("New password min 6 characters");return;}
+    if(cpNew!==cpNew2){setCpErr("Passwords do not match");return;}
+    try{
+      const fbUser=fbAuth.currentUser;
+      if(!fbUser){setCpErr("Not logged in");return;}
+      // Re-authenticate first for security
+      const cred=firebase.auth.EmailAuthProvider.credential(fbUser.email, cpOld);
+      await fbUser.reauthenticateWithCredential(cred);
+      await fbUser.updatePassword(cpNew);
+      setCpOld("");setCpNew("");setCpNew2("");
+      setCpMsg("✅ Password changed successfully!");
+      setTimeout(()=>setCpMsg(""),3000);
+    }catch(e){
+      if(e.code==="auth/wrong-password"||e.code==="auth/invalid-credential") setCpErr("Current password is incorrect.");
+      else setCpErr("Something went wrong. Please try again.");
+    }
+  };
+
+  const deleteAccount=async()=>{
+    try{
+      const uid=fbAuth.currentUser?.uid;
+      if(uid) await fsDel("users",uid);
+      const fbUser=fbAuth.currentUser;
+      if(fbUser) await fbUser.delete();
+    }catch{}
+    setCurUser(null);setIsPro(false);setAuthSc("splash");
+    setShowDelConf(false);
+  };
+
+  /* ── AUTH STYLES ── */
+  const AB="radial-gradient(ellipse at 20% 20%,#2dd4bf22 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,#7c3aed18 0%,transparent 50%),#06090f";
+  const AI={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:14,padding:"15px 18px",color:"#e2e8f0",fontSize:15,outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
+  const AB2={width:"100%",padding:"16px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#2dd4bf,#0d9488)",color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer",fontFamily:"inherit",letterSpacing:0.4,boxShadow:"0 6px 24px rgba(45,212,191,0.4)"};
+  const AS=`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800;900&display=swap');@keyframes vFadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}@keyframes vFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}@keyframes vSpin{to{transform:rotate(360deg)}}@keyframes vGlow{0%,100%{box-shadow:0 0 18px rgba(45,212,191,0.4)}50%{box-shadow:0 0 38px rgba(45,212,191,0.8)}}@keyframes vPop{0%{transform:scale(0.8);opacity:0}100%{transform:scale(1);opacity:1}}*{box-sizing:border-box;margin:0;padding:0}input::placeholder{color:rgba(148,163,184,0.4)}input:focus{border-color:rgba(45,212,191,0.6)!important;box-shadow:0 0 0 3px rgba(45,212,191,0.12)!important;outline:none}`;
+
+  if(authSc==="loading") return(
+    <div style={{minHeight:"100vh",background:AB,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Sora',sans-serif"}}>
+      <style>{AS}</style>
+      <div style={{textAlign:"center"}}>
+        <div style={{animation:"vFloat 1.6s ease-in-out infinite",display:"inline-block",marginBottom:16}}><AuthLogo/></div>
+        <div style={{fontSize:26,fontWeight:900,color:"#e2e8f0"}}>Vid<span style={{color:"#2dd4bf"}}>yai</span></div>
+        <div style={{marginTop:14,fontSize:22,color:"rgba(45,212,191,0.6)",animation:"vSpin 1s linear infinite",display:"inline-block"}}>◌</div>
+      </div>
+    </div>
+  );
+
+  if(authSc==="splash") return(
+    <div style={{minHeight:"100vh",background:AB,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"28px 24px",fontFamily:"'Sora',sans-serif",textAlign:"center"}}>
+      <style>{AS}</style>
+      <div style={{animation:"vFloat 3s ease-in-out infinite",marginBottom:18}}><AuthLogo/></div>
+      <div style={{animation:"vFadeUp 0.5s ease",marginBottom:8}}>
+        <div style={{fontSize:38,fontWeight:900,color:"#e2e8f0",letterSpacing:-1}}>Vid<span style={{color:"#2dd4bf"}}>yai</span></div>
+        <div style={{fontSize:11,color:"rgba(148,163,184,0.6)",letterSpacing:3,textTransform:"uppercase",marginTop:6}}>AI Voice Study Companion</div>
+      </div>
+      <div style={{fontSize:14,color:"rgba(148,163,184,0.6)",lineHeight:1.9,maxWidth:290,marginBottom:44,marginTop:10,animation:"vFadeUp 0.6s ease"}}>
+        Study smarter · Speak confident English · Grow every day with AI 🚀
+      </div>
+      <div style={{width:"100%",maxWidth:340,display:"flex",flexDirection:"column",gap:14,animation:"vFadeUp 0.7s ease"}}>
+        <button onClick={()=>setAuthSc("signup")} style={{...AB2,animation:"vGlow 3s ease-in-out infinite"}}>✨ Create Free Account</button>
+        <button onClick={()=>setAuthSc("login")} style={{width:"100%",padding:"15px",borderRadius:14,border:"1px solid rgba(45,212,191,0.3)",background:"rgba(45,212,191,0.05)",color:"#2dd4bf",fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>🔐 Already have account? Sign In</button>
+      </div>
+      <div style={{display:"flex",gap:28,justifyContent:"center",marginTop:44}}>
+        {[["📸","Scan & Quiz"],["🌍","GK Topics"],["🤖","AI Chat"]].map(([ic,lb],i)=>(
+          <div key={lb} style={{textAlign:"center",animation:`vPop ${0.6+i*0.1}s ease`}}>
+            <div style={{fontSize:28,marginBottom:6}}>{ic}</div>
+            <div style={{fontSize:10,color:"rgba(148,163,184,0.45)",fontWeight:700,letterSpacing:0.5}}>{lb}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{marginTop:40,fontSize:11,color:"rgba(100,116,139,0.45)"}}>Powered by <strong style={{color:"rgba(45,212,191,0.38)"}}>Zoraak Technologies</strong></div>
+    </div>
+  );
+
+  if(authSc==="terms"||authSc==="privacy"){
+    const isTerms=authSc==="terms";
+    const sections=isTerms?[
+      {t:"1. Acceptance",b:"By using Vidyai, you agree to these Terms. If you disagree, please do not use the app."},
+      {t:"2. Service",b:"Vidyai is an AI-powered study app by Zoraak Technologies that helps students learn through quizzes and AI conversations."},
+      {t:"3. Accounts",b:"You are responsible for your account credentials. Provide accurate information. You're responsible for all activity under your account."},
+      {t:"4. Free & PRO Plans",b:"Free users get 3 image uploads/day. PRO is unlocked via a unique activation code after payment. PRO is tied to your email and works on any device."},
+      {t:"5. Payment & Refunds",b:"Payment via UPI/GPay. Activation codes are non-transferable. No refunds after code redemption. Issues? Email Vidyaisupport@gmail.com."},
+      {t:"6. Acceptable Use",b:"Do not misuse the service, share activation codes, create fake accounts, or use Vidyai for unlawful purposes."},
+      {t:"7. Intellectual Property",b:"All content and technology in Vidyai belong to Zoraak Technologies. Patent Pending. Reproduction is prohibited."},
+      {t:"8. Disclaimers",b:"AI-generated content may occasionally have errors. Always verify important information with your teachers or official study materials."},
+      {t:"9. Contact",b:"Vidyaisupport@gmail.com · WhatsApp +91 9567325132 · Zoraak Technologies, Kerala, India."},
+    ]:[
+      {t:"1. What We Collect",b:"Name, email, optional phone number, quiz scores, and streak data — only what's needed to run the app."},
+      {t:"2. How We Store It",b:"All data is stored locally on your device. Passwords are SHA-256 encrypted. We never store plain text passwords."},
+      {t:"3. What We DON'T Collect",b:"No location, device IDs, browsing history. No data sold to third parties. No ads. Ever."},
+      {t:"4. AI Processing",b:"Quiz inputs are sent to Anthropic AI API for responses. We do not store your quiz answers on our servers."},
+      {t:"5. Payment",b:"Payments via UPI/GPay only. We never collect bank details or card numbers."},
+      {t:"6. Security",b:"SHA-256 passwords, tamper-proof PRO tokens, brute-force protection, and session timeout keep your account safe."},
+      {t:"7. Your Rights",b:"Delete your account anytime from Profile page. All your data is removed. Contact us for any data requests."},
+      {t:"8. No Ads",b:"Vidyai is completely ad-free. We don't track you or sell your data."},
+      {t:"9. Contact",b:"Vidyaisupport@gmail.com · WhatsApp +91 9567325132 · Zoraak Technologies, Kerala, India."},
+    ];
+    return(
+      <div style={{minHeight:"100vh",background:AB,fontFamily:"'Sora',sans-serif",padding:"20px"}}>
+        <style>{AS}</style>
+        <button onClick={()=>setAuthSc("signup")} style={{background:"none",border:"none",color:"rgba(148,163,184,0.6)",fontSize:14,cursor:"pointer",fontFamily:"inherit",padding:"4px 0",marginBottom:16}}>← Back to Signup</button>
+        <div style={{maxWidth:480,margin:"0 auto"}}>
+          <div style={{fontSize:22,fontWeight:900,color:"#e2e8f0",marginBottom:4}}>{isTerms?"📋 Terms of Service":"🔒 Privacy Policy"}</div>
+          <div style={{fontSize:12,color:"rgba(148,163,184,0.4)",marginBottom:20}}>Zoraak Technologies · Last updated March 2025</div>
+          {sections.map(s=>(
+            <div key={s.t} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 18px",marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#2dd4bf",marginBottom:5}}>{s.t}</div>
+              <div style={{fontSize:13,color:"rgba(148,163,184,0.7)",lineHeight:1.8}}>{s.b}</div>
+            </div>
+          ))}
+          <button onClick={()=>setAuthSc("signup")} style={{...AB2,marginTop:10}}>← Back to Signup</button>
+        </div>
+      </div>
+    );
+  }
+
+  if(authSc==="login") return(
+    <div style={{minHeight:"100vh",background:AB,display:"flex",flexDirection:"column",padding:"24px 20px",fontFamily:"'Sora',sans-serif"}}>
+      <style>{AS}</style>
+      <button onClick={()=>{setAuthSc("splash");setAErr("");}} style={{background:"none",border:"none",color:"rgba(148,163,184,0.6)",fontSize:14,cursor:"pointer",textAlign:"left",fontFamily:"inherit",padding:"4px 0",marginBottom:4}}>← Back</button>
+      <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",maxWidth:400,margin:"0 auto",width:"100%",animation:"vFadeUp 0.4s ease"}}>
+        <div style={{textAlign:"center",marginBottom:34}}>
+          <div style={{display:"inline-block",animation:"vFloat 3s ease-in-out infinite",marginBottom:14}}><AuthLogo/></div>
+          <div style={{fontSize:28,fontWeight:900,color:"#e2e8f0"}}>Welcome <span style={{color:"#2dd4bf"}}>Back!</span></div>
+          <div style={{fontSize:13,color:"rgba(148,163,184,0.5)",marginTop:6}}>Sign in to continue your journey 📚</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <input style={AI} type="email" autoComplete="email" placeholder="📧  Email address" value={aEmail} onChange={e=>{setAEmail(e.target.value);setAErr("");}} onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
+          <div style={{position:"relative"}}>
+            <input style={{...AI,paddingRight:52}} type={showPwd?"text":"password"} autoComplete="current-password" placeholder="🔒  Password" value={aPwd} onChange={e=>{setAPwd(e.target.value);setAErr("");}} onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
+            <button onClick={()=>setShowPwd(v=>!v)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"rgba(148,163,184,0.5)",cursor:"pointer",fontSize:17,padding:0,fontFamily:"inherit"}}>{showPwd?"🙈":"👁️"}</button>
+          </div>
+          {aErr&&<div style={{padding:"11px 16px",borderRadius:12,background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.28)",color:"#f87171",fontSize:13}}>⚠️ {aErr}</div>}
+          <button onClick={doLogin} disabled={aLd} style={{...AB2,marginTop:4,opacity:aLd?0.7:1}}>
+            {aLd?<span style={{display:"inline-block",animation:"vSpin 1s linear infinite",fontSize:20}}>◌</span>:"🔐 Sign In"}
+          </button>
+        </div>
+        <div style={{textAlign:"center",marginTop:28,fontSize:13,color:"rgba(148,163,184,0.45)"}}>
+          New to Vidyai?{" "}<span onClick={()=>{setAuthSc("signup");setAErr("");}} style={{color:"#2dd4bf",fontWeight:700,cursor:"pointer"}}>Create Account →</span>
+        </div>
+        <div style={{textAlign:"center",marginTop:16}}>
+          {!showForgot?<span onClick={()=>setShowForgot(true)} style={{fontSize:12,color:"rgba(148,163,184,0.4)",cursor:"pointer",textDecoration:"underline"}}>Forgot password?</span>:
+          <div style={{padding:"14px 16px",borderRadius:12,background:"rgba(45,212,191,0.06)",border:"1px solid rgba(45,212,191,0.2)",textAlign:"left",animation:"vFadeUp 0.3s ease"}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#2dd4bf",marginBottom:8}}>🔑 Reset Password</div>
+            <input style={{...AI,marginBottom:8,fontSize:13,padding:"11px 14px"}} type="email" placeholder="Enter your registered email" value={aEmail} onChange={e=>{setAEmail(e.target.value);setAErr("");}}/>
+            <button onClick={async()=>{
+              if(!aEmail.trim()){setAErr("Enter your email address");return;}
+              try{
+                await fbAuth.sendPasswordResetEmail(aEmail.trim());
+                setAErr("");setShowForgot(false);
+                alert("✅ Password reset email sent! Check your inbox (and spam folder).");
+              }catch(e){
+                if(e.code==="auth/user-not-found") setAErr("No account found with this email.");
+                else setAErr("Could not send reset email. Please try again.");
+              }
+            }} style={{...AB2,fontSize:13,padding:"11px",marginBottom:6}}>📧 Send Reset Email</button>
+            <button onClick={()=>setShowForgot(false)} style={{background:"none",border:"none",color:"rgba(148,163,184,0.4)",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+
+  if(authSc==="signup") return(
+    <div style={{minHeight:"100vh",background:AB,display:"flex",flexDirection:"column",padding:"24px 20px",fontFamily:"'Sora',sans-serif",overflowY:"auto"}}>
+      <style>{AS}</style>
+      <button onClick={()=>{setAuthSc("splash");setAErr("");}} style={{background:"none",border:"none",color:"rgba(148,163,184,0.6)",fontSize:14,cursor:"pointer",textAlign:"left",fontFamily:"inherit",padding:"4px 0",marginBottom:4,flexShrink:0}}>← Back</button>
+      <div style={{maxWidth:400,margin:"0 auto",width:"100%",animation:"vFadeUp 0.4s ease",paddingBottom:40,paddingTop:4}}>
+        <div style={{textAlign:"center",marginBottom:26}}>
+          <div style={{display:"inline-block",animation:"vFloat 3s ease-in-out infinite",marginBottom:12}}><AuthLogo/></div>
+          <div style={{fontSize:28,fontWeight:900,color:"#e2e8f0"}}>Join <span style={{color:"#2dd4bf"}}>Vidyai</span> ✨</div>
+          <div style={{fontSize:13,color:"rgba(148,163,184,0.5)",marginTop:5}}>Free forever · No credit card needed</div>
+        </div>
+          <div style={{display:"flex",flexDirection:"column",gap:13}}>
+          <input style={AI} type="text" autoComplete="name" placeholder="😊  Your full name" value={aName} onChange={e=>{setAName(e.target.value);setAErr("");}}/>
+          <input style={AI} type="email" autoComplete="email" placeholder="📧  Email address" value={aEmail} onChange={e=>{setAEmail(e.target.value);setAErr("");}}/>
+          <input style={AI} type="tel" autoComplete="tel" placeholder="📱  Phone number (optional)" value={aPhone} onChange={e=>setAPhone(e.target.value)}/>
+          <div style={{position:"relative"}}>
+            <input style={{...AI,paddingRight:52}} type={showPwd?"text":"password"} autoComplete="new-password" placeholder="🔒  Create password (min 6)" value={aPwd} onChange={e=>{setAPwd(e.target.value);setAErr("");}}/>
+            <button onClick={()=>setShowPwd(v=>!v)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"rgba(148,163,184,0.5)",cursor:"pointer",fontSize:17,padding:0,fontFamily:"inherit"}}>{showPwd?"🙈":"👁️"}</button>
+          </div>
+          <input style={AI} type="password" autoComplete="new-password" placeholder="🔒  Confirm password" value={aPwd2} onChange={e=>{setAPwd2(e.target.value);setAErr("");}} onKeyDown={e=>e.key==="Enter"&&doSignup()}/>
+          {aPwd.length>0&&(
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {[6,10,14].map((n,i)=>(
+                <div key={i} style={{flex:1,height:4,borderRadius:99,background:aPwd.length>=n?"linear-gradient(90deg,#2dd4bf,#0d9488)":"rgba(255,255,255,0.1)",transition:"background 0.3s"}}/>
+              ))}
+              <span style={{fontSize:11,color:aPwd.length>=14?"#2dd4bf":aPwd.length>=10?"#fbbf24":"#f87171",fontWeight:700,minWidth:44}}>{aPwd.length>=14?"Strong":aPwd.length>=10?"Good":"Weak"}</span>
+            </div>
+          )}
+          {/* Terms agreement */}
+          <div onClick={()=>setAgreeTerms(v=>!v)} style={{display:"flex",alignItems:"flex-start",gap:12,cursor:"pointer",padding:"4px 0"}}>
+            <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${agreeTerms?"#2dd4bf":"rgba(255,255,255,0.2)"}`,background:agreeTerms?"#2dd4bf":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1,transition:"all 0.2s"}}>
+              {agreeTerms&&<span style={{color:"#000",fontSize:13,fontWeight:900}}>✓</span>}
+            </div>
+            <div style={{fontSize:12,color:"rgba(148,163,184,0.6)",lineHeight:1.7}}>
+              I agree to the{" "}
+              <span onClick={e=>{e.stopPropagation();setAuthSc("terms");}} style={{color:"#2dd4bf",fontWeight:700,textDecoration:"underline"}}>Terms of Service</span>
+              {" "}and{" "}
+              <span onClick={e=>{e.stopPropagation();setAuthSc("privacy");}} style={{color:"#2dd4bf",fontWeight:700,textDecoration:"underline"}}>Privacy Policy</span>
+            </div>
+          </div>
+          {aErr&&<div style={{padding:"11px 16px",borderRadius:12,background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.28)",color:"#f87171",fontSize:13}}>⚠️ {aErr}</div>}
+          <button onClick={doSignup} disabled={aLd} style={{...AB2,marginTop:4,opacity:aLd?0.7:1}}>
+            {aLd?<span style={{display:"inline-block",animation:"vSpin 1s linear infinite",fontSize:20}}>◌</span>:"🚀 Create My Account"}
+          </button>
+        </div>
+        <div style={{textAlign:"center",marginTop:18,fontSize:11,color:"rgba(148,163,184,0.38)",lineHeight:1.7}}>
+          Password encrypted with SHA-256 · Stored locally on your device
+        </div>
+        <div style={{textAlign:"center",marginTop:14,fontSize:13,color:"rgba(148,163,184,0.45)"}}>
+          Already have an account?{" "}<span onClick={()=>{setAuthSc("login");setAErr("");}} style={{color:"#2dd4bf",fontWeight:700,cursor:"pointer"}}>Sign In →</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{minHeight:"100vh",fontFamily:"'Sora','Outfit','Segoe UI',sans-serif",color:C1,background:dk?`radial-gradient(ellipse at 18% 12%,${T.a}18 0%,transparent 44%),radial-gradient(ellipse at 82% 88%,${T.b}12 0%,transparent 44%),${BG}`:`radial-gradient(ellipse at 20% 10%,${T.a}14 0%,transparent 50%),${BG}`,display:"flex",flexDirection:"column"}}>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800;900&display=swap');
+        @keyframes vRipple{0%{transform:scale(0.85);opacity:0.7}100%{transform:scale(2.4);opacity:0}}
+        @keyframes vFadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes vSlide{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes vPop{0%{transform:scale(0.82);opacity:0}100%{transform:scale(1);opacity:1}}
+        @keyframes vSpin{to{transform:rotate(360deg)}}
+        @keyframes vPulse{0%,100%{opacity:1}50%{opacity:0.28}}
+        @keyframes vCfFall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(760deg);opacity:0}}
+        @keyframes vFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+        @keyframes vGlow{0%,100%{box-shadow:0 0 12px ${T.a}40}50%{box-shadow:0 0 28px ${T.a}90,0 0 50px ${T.a}35}}
+        @keyframes vMsg{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes vNumPop{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+        @keyframes vShimmer{0%,100%{background-position:200% center}50%{background-position:0% center}}
+        *{box-sizing:border-box;margin:0;padding:0}
+        ::-webkit-scrollbar{width:3px}
+        ::-webkit-scrollbar-thumb{background:${T.a}55;border-radius:99px}
+        button:active{opacity:0.76;transform:scale(0.95)!important}
+        input,textarea{caret-color:${T.a}}
+      `}</style>
+
+      <Confetti show={showConf}/>
+
+      {/* ── SESSION TIMEOUT WARNING ── */}
+      {showTimeoutWarn&&<div style={{position:"fixed",bottom:90,left:"50%",transform:"translateX(-50%)",zIndex:999,background:dk?"rgba(9,14,26,0.97)":"rgba(255,255,255,0.97)",border:"1px solid rgba(251,191,36,0.4)",borderRadius:16,padding:"14px 20px",boxShadow:"0 8px 32px rgba(0,0,0,0.4)",minWidth:280,maxWidth:340,animation:"vFadeUp 0.3s ease"}}>
+        <div style={{fontWeight:800,fontSize:14,color:"#fbbf24",marginBottom:6}}>⏰ Still there?</div>
+        <div style={{fontSize:13,color:C2,marginBottom:12}}>You'll be logged out in 2 minutes due to inactivity.</div>
+        <button onClick={resetActivity} style={{width:"100%",padding:"10px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#fbbf24,#f59e0b)",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✅ I'm still here</button>
+      </div>}
+
+      {/* ── ADMIN PANEL MODAL ── */}
+      {adminPanelOpen&&<div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+        <div style={{background:dk?"#0d1117":"#fff",borderRadius:24,padding:24,width:"100%",maxWidth:420,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.6)",border:`1px solid ${BDR}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+            <div style={{fontWeight:900,fontSize:18,color:T.a}}>🔧 Admin Panel</div>
+            <button onClick={()=>{setAdminPanelOpen(false);setAdminAuth(false);setAdminPwd("");setAdminErr("");}} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:C3}}>✕</button>
+          </div>
+          {!adminAuth?<div>
+            <div style={{fontSize:13,color:C2,marginBottom:16}}>{!adminCfg.adminHash?"First time setup — this password will become your admin password.":"Enter admin password to continue."}</div>
+            <input type="password" placeholder="🔒 Admin password" value={adminPwd} onChange={e=>{setAdminPwd(e.target.value);setAdminErr("");}} onKeyDown={e=>e.key==="Enter"&&loginAdmin()} style={{...inputStyle,marginBottom:10}} autoFocus/>
+            {adminErr&&<div style={{fontSize:13,color:"#f87171",marginBottom:10}}>⚠️ {adminErr}</div>}
+            <button onClick={loginAdmin} style={{width:"100%",padding:"12px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${T.a},${T.b})`,color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>{!adminCfg.adminHash?"🔐 Set Admin Password":"🔐 Login"}</button>
+          </div>:<div>
+            {/* Admin Tabs */}
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              {[{id:"settings",label:"⚙️ Settings"},{id:"users",label:"👥 Users"}].map(t=>(
+                <button key={t.id} onClick={()=>setAdminTab(t.id)} style={{flex:1,padding:"9px",borderRadius:10,border:"none",background:adminTab===t.id?`linear-gradient(135deg,${T.a},${T.b})`:"rgba(255,255,255,0.06)",color:adminTab===t.id?"#fff":C2,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{t.label}</button>
+              ))}
+            </div>
+            {/* FIXED: single tab render only */}
+            {/* Admin Tabs */}
+            
+
+            {adminTab==="settings"&&<div>
+              {adminSaved&&<div style={{padding:"10px 14px",borderRadius:10,background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.3)",color:"#34d399",fontSize:13,marginBottom:14,fontWeight:700}}>✅ Settings saved successfully!</div>}
+              {[
+                {label:"UPI ID / GPay",key:"upi",placeholder:"yourname@upi"},
+                {label:"WhatsApp Number (with country code, no +)",key:"waNumb",placeholder:"919567325132"},
+                {label:"6 Month Price",key:"price6m",placeholder:"₹149"},
+                {label:"1 Year Price",key:"price1y",placeholder:"₹249"},
+                {label:"Old 6 Month Price (crossed out)",key:"was6m",placeholder:"₹299"},
+                {label:"Old 1 Year Price (crossed out)",key:"was1y",placeholder:"₹599"},
+              ].map(f=>(
+                <div key={f.key} style={{marginBottom:14}}>
+                  <div style={{fontSize:11,color:C3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{f.label}</div>
+                  <input style={inputStyle} placeholder={f.placeholder} value={editCfg[f.key]||""} onChange={e=>setEditCfg(p=>({...p,[f.key]:e.target.value}))}/>
+                </div>
+              ))}
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,color:C3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Change Admin Password (leave blank to keep)</div>
+                <input type="password" style={inputStyle} placeholder="New admin password" value={adminPwd} onChange={e=>setAdminPwd(e.target.value)}/>
+              </div>
+              {adminErr&&<div style={{fontSize:13,color:"#f87171",marginBottom:10}}>⚠️ {adminErr}</div>}
+              <button onClick={async()=>{
+                if(adminPwd.trim()){const h=await hashAdmin(adminPwd);setEditCfg(p=>({...p,adminHash:h}));}
+                await saveAdminCfg();
+              }} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${T.a},${T.b})`,color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}>💾 Save Settings</button>
+            </div>}
+            {adminTab==="users"&&<div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div style={{fontWeight:700,fontSize:14,color:C1}}>Registered Users</div>
+                <div style={{background:`${T.a}18`,border:`1px solid ${T.a}30`,borderRadius:99,padding:"3px 12px",fontSize:12,fontWeight:800,color:T.a}}>{adminUsers.length} total</div>
+              </div>
+              {adminUsersLd?<div style={{textAlign:"center",padding:"20px",color:C3}}>Loading...</div>:
+              adminUsers.length===0?<div style={{textAlign:"center",padding:"20px",color:C3}}>No users yet</div>:
+              <div style={{maxHeight:320,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
+                {adminUsers.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).map((u,i)=>(
+                  <div key={i} style={{background:dk?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.03)",border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13,color:C1}}>{u.name||"Unknown"}</div>
+                        <div style={{fontSize:11,color:C3,marginTop:2}}>{u.email}</div>
+                        {u.phone&&<div style={{fontSize:11,color:C3}}>{u.phone}</div>}
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        {u.isPro?<div style={{background:"linear-gradient(135deg,#fbbf24,#f59e0b)",color:"#000",fontSize:10,fontWeight:800,padding:"3px 8px",borderRadius:99,marginBottom:4}}>⭐ PRO</div>:<div style={{background:"rgba(100,116,139,0.2)",color:C3,fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:99,marginBottom:4}}>Free</div>}
+                        <div style={{fontSize:10,color:C3}}>{u.createdAt?new Date(u.createdAt).toLocaleDateString("en-IN"):""}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>}
+              <button onClick={()=>{setAdminUsersLd(true);fsAll("users").then(u=>{setAdminUsers(u);setAdminUsersLd(false);});}} style={{...ghostBtn,width:"100%",marginTop:10,textAlign:"center",fontSize:12}}>🔄 Refresh</button>
+            </div>}
+          </div>}
+        </div>
+      </div>}
+
+      {/* Streak toast */}
+      {streakMsg&&<div style={{position:"fixed",top:72,left:"50%",transform:"translateX(-50%)",zIndex:999,background:"linear-gradient(135deg,#fb923c,#f59e0b)",color:"#fff",padding:"11px 22px",borderRadius:99,fontWeight:800,fontSize:14,boxShadow:"0 6px 24px rgba(251,146,60,0.5)",animation:"vFadeUp 0.4s ease",whiteSpace:"nowrap"}}>
+        {streakMsg}
+      </div>}
+
+      {/* ─── HEADER ─── */}
+      <header style={{padding:"13px 18px",position:"sticky",top:0,zIndex:60,background:dk?"rgba(6,9,15,0.93)":"rgba(240,244,248,0.93)",backdropFilter:"blur(26px)",borderBottom:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{animation:"vFloat 3.2s ease-in-out infinite"}}><VLogo s={38} a={T.a} b={T.b}/></div>
+          <div>
+            <div style={{fontSize:21,fontWeight:900,letterSpacing:-0.5,color:C1}}>Vid<span style={{color:T.a}}>yai</span></div>
+            <div style={{fontSize:9,color:C3,letterSpacing:2.2,textTransform:"uppercase"}}>AI Voice Study Companion</div>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {tSecs>0&&tOn&&<div style={{padding:"4px 11px",borderRadius:99,fontSize:12,fontWeight:800,background:urgent?"rgba(248,113,113,0.14)":dk?"rgba(255,255,255,0.05)":"rgba(0,0,0,0.05)",border:urgent?"1px solid rgba(248,113,113,0.35)":`1px solid ${T.a}33`,color:urgent?"#f87171":T.a,animation:urgent?"vPulse 1s infinite":"none"}}>⏱ {tm}:{String(ts).padStart(2,"0")}</div>}
+          {streak>0&&<div style={{background:"rgba(251,146,60,0.15)",border:"1px solid rgba(251,146,60,0.3)",borderRadius:99,padding:"4px 11px",fontSize:13,fontWeight:800,color:"#fb923c"}}>🔥 {streak}</div>}
+          {totalPts>0&&<div style={{background:`${T.a}18`,border:`1px solid ${T.a}30`,borderRadius:99,padding:"4px 13px",fontSize:13,fontWeight:800,color:T.a}}>⭐ {totalPts}</div>}
+          {isPro&&<span style={{fontSize:9,fontWeight:800,padding:"3px 8px",borderRadius:99,background:"linear-gradient(135deg,#fbbf24,#f59e0b)",color:"#000"}}>PRO</span>}
+          <button onClick={()=>setDark(d=>!d)} style={{background:"transparent",border:`1px solid ${BDR}`,borderRadius:10,padding:"6px 9px",cursor:"pointer",fontSize:16,fontFamily:"inherit"}}>{dk?"☀️":"🌙"}</button>
+          {curUser&&<div onClick={()=>goTo("profile")} style={{width:34,height:34,borderRadius:"50%",background:`linear-gradient(135deg,${T.a},${T.b})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:14,color:"#fff",cursor:"pointer",flexShrink:0,boxShadow:`0 2px 10px ${T.a}44`}}>
+            {curUser.name?curUser.name[0].toUpperCase():"U"}
+          </div>}
+        </div>
+      </header>
+
+      {/* ─── NAV ─── */}
+      {!noFullNav&&(
+        <nav style={{display:"flex",margin:"10px 14px 0",background:NBG,borderRadius:16,padding:4,border:`1px solid ${BDR}`,backdropFilter:"blur(18px)"}}>
+          {[["home","🏠","Home"],["quiz","📸","Quiz"],["gk","🌍","GK"],["settings","⚙️","More"]].map(([id,ic,lb])=>(
+            <button key={id} onClick={()=>setPage(id)} style={{flex:1,padding:"10px 4px",border:"none",borderRadius:12,fontSize:12,fontWeight:700,cursor:"pointer",background:page===id?`linear-gradient(135deg,${T.a},${T.b})`:"transparent",color:page===id?"#fff":C3,boxShadow:page===id?`0 3px 14px ${T.a}44`:"none",transition:"all 0.24s",fontFamily:"inherit"}}>{ic} {lb}</button>
+          ))}
+        </nav>
+      )}
+
+      <main style={{flex:1,padding:"12px 14px 28px",maxWidth:580,width:"100%",margin:"0 auto"}}>
+
+        {/* ═══════ HOME ═══════ */}
+        {page==="home"&&<div style={{animation:"vFadeUp 0.4s ease"}}>
+
+          {/* Daily Quote */}
+          <div style={{...card,background:dk?`linear-gradient(135deg,${T.a}22,${T.b}14,rgba(9,14,26,0.9))`:`linear-gradient(135deg,${T.a}18,${T.b}0a,rgba(255,255,255,0.9))`,border:`1px solid ${T.a}32`,padding:"18px 20px"}}>
+            <div style={{fontSize:10,color:T.a,letterSpacing:2.2,textTransform:"uppercase",fontWeight:700,marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+              <span style={{animation:"vFloat 2s ease-in-out infinite",display:"inline-block"}}>✨</span> Daily Inspiration
+            </div>
+            <div style={{fontSize:15,fontWeight:600,color:C1,lineHeight:1.82,fontStyle:"italic",marginBottom:8}}>"{todayQ.q}"</div>
+            <div style={{fontSize:12,color:C3}}>— {todayQ.a}</div>
+          </div>
+
+          {/* Hero card */}
+          <div style={{...card,textAlign:"center",padding:"28px 22px",border:`1px solid ${T.a}22`}}>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:14}}><VLogo s={62} a={T.a} b={T.b}/></div>
+            <div style={{fontSize:34,fontWeight:900,letterSpacing:-1,color:C1,marginBottom:8}}>Vid<span style={{color:T.a}}>yai</span></div>
+            <div style={{fontSize:13,color:C2,lineHeight:1.8,maxWidth:300,margin:"0 auto 20px"}}>Study smarter · Speak American English · Grow every single day</div>
+            <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+              <button style={primaryBtn()} onClick={()=>setPage("quiz")}>📸 Start Quiz</button>
+            </div>
+          </div>
+
+          {/* Feature grid */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            {[
+              {ic:"📸",t:"Scan & Quiz",d:"Photo textbook — AI quizzes you",col:T.a,fn:()=>setPage("quiz"),free:true},
+              {ic:"🌍",t:"GK Quiz",d:"8 topics of general knowledge",col:"#818cf8",fn:()=>setPage("gk"),free:true},
+              {ic:"🤖",t:"AI Mock Chat",d:"Interview · Debate · Daily talk",col:"#fb923c",fn:()=>goTo("mock"),free:false,full:true},
+            ].map(f=>(
+              <div key={f.t} onClick={()=>{if(!f.free&&!isPro){goTo("sub");return;}f.fn();}} style={{...card,padding:"16px 14px",marginBottom:0,border:`1px solid ${f.col}22`,cursor:"pointer",position:"relative",transition:"transform 0.15s",gridColumn:f.full?"1 / -1":undefined}}>
+                <div style={{fontSize:26,marginBottom:8}}>{f.ic}</div>
+                <div style={{fontWeight:700,fontSize:13,color:f.col,marginBottom:4}}>{f.t}</div>
+                <div style={{fontSize:11,color:C3,lineHeight:1.5}}>{f.d}</div>
+                {!f.free&&!isPro&&<div style={{position:"absolute",top:8,right:8}}><ProBadge/></div>}
+              </div>
+            ))}
+          </div>
+
+          <div style={{display:"flex",gap:10,marginBottom:14}}>
+            <button style={{...ghostBtn,flex:1,textAlign:"center"}} onClick={()=>goTo("guide")}>💡 Guide</button>
+            <button style={{...ghostBtn,flex:1,textAlign:"center"}} onClick={()=>goTo("about")}>ℹ️ About</button>
+          </div>
+
+          {!isPro&&<div onClick={()=>goTo("sub")} style={{...card,background:dk?`linear-gradient(135deg,${T.a}16,${T.b}10)`:`linear-gradient(135deg,${T.a}12,${T.b}08)`,border:`1px solid ${T.a}38`,cursor:"pointer",display:"flex",alignItems:"center",gap:14,animation:"vGlow 3s ease-in-out infinite"}}>
+            <div style={{fontSize:32,animation:"vFloat 2s ease-in-out infinite"}}>⭐</div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:800,fontSize:15,color:T.a}}>Upgrade to Vidyai PRO</div>
+              <div style={{fontSize:12,color:C2,marginTop:2}}>AI Mock Chat · PDF · URL Quiz · 10 images · All GK Topics</div>
+              <div style={{display:"flex",alignItems:"baseline",gap:8,marginTop:4}}>
+                <div style={{fontSize:17,fontWeight:900,color:"#fbbf24"}}>₹149 <span style={{fontSize:12,color:C3,fontWeight:400}}>/ 6 months</span></div>
+                <div style={{fontSize:11,color:C3,textDecoration:"line-through"}}>₹299</div>
+              </div>
+              <div style={{fontSize:10,color:"#fbbf24",fontWeight:800,marginTop:2}}>🔥 Launch Discount · Limited Time!</div>
+            </div>
+            <span style={{color:T.a,fontSize:24}}>›</span>
+          </div>}
+        </div>}
+
+        {/* ═══════ QUIZ ═══════ */}
+        {page==="quiz"&&<div style={{animation:"vFadeUp 0.4s ease"}}>
+          <div style={{marginBottom:14}}><div style={{fontSize:20,fontWeight:800,color:T.a}}>📸 Scan & Quiz</div><div style={{fontSize:13,color:C2,marginTop:2}}>Upload any textbook page — AI teacher quizzes you!</div></div>
+
+          {/* Upload */}
+          {qPh==="upload"&&<div style={card}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:4,color:T.a}}>📚 Choose Your Study Material</div>
+            <div style={{fontSize:12,color:C3,marginBottom:16}}>Free: up to 3 images &nbsp;·&nbsp; PRO: 10 images + PDF + URL</div>
+            {!isPro&&<div style={{background:imgUsedToday>=DAILY_FREE_IMG?"rgba(248,113,113,0.08)":"rgba(45,212,191,0.06)",border:`1px solid ${imgUsedToday>=DAILY_FREE_IMG?"rgba(248,113,113,0.25)":"rgba(45,212,191,0.2)"}`,borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:20}}>{imgUsedToday>=DAILY_FREE_IMG?"⏰":"🖼️"}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:imgUsedToday>=DAILY_FREE_IMG?"#f87171":"#2dd4bf"}}>
+                  {imgUsedToday>=DAILY_FREE_IMG?"Daily limit reached — come back tomorrow!":
+                   `Today: ${imgUsedToday}/${DAILY_FREE_IMG} free uploads used`}
+                </div>
+                <div style={{fontSize:11,color:C3,marginTop:2}}>
+                  {imgUsedToday>=DAILY_FREE_IMG?"Upgrade to PRO for unlimited daily sessions":"Resets every 24 hours · PRO = unlimited"}
+                </div>
+              </div>
+              {imgUsedToday>=DAILY_FREE_IMG&&<button onClick={()=>goTo("sub")} style={{...primaryBtn(false),padding:"7px 14px",fontSize:12}}>Get PRO</button>}
+            </div>}
+
+            {/* Images — free (3) */}
+            <div onClick={()=>fileRef.current.click()} style={{display:"flex",gap:14,alignItems:"center",padding:"15px 16px",borderRadius:14,cursor:"pointer",border:`1px solid ${BDR}`,marginBottom:10,background:"transparent"}}>
+              <div style={{width:48,height:48,borderRadius:12,background:`${T.a}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0}}>🖼️</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:2}}>Upload Images</div>
+                <div style={{fontSize:12,color:C2}}>{isPro?"PRO — up to 10 textbook page photos":"Free — up to 3 textbook page photos"}</div>
+              </div>
+              <span style={{fontSize:11,fontWeight:800,padding:"3px 9px",borderRadius:99,background:`${T.a}18`,color:T.a}}>{isPro?"10":"3"} IMG</span>
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={onImgs}/>
+
+            {/* PDF — PRO only */}
+            <div onClick={()=>{if(!isPro){goTo("sub");return;}pdfRef.current.click();}} style={{display:"flex",gap:14,alignItems:"center",padding:"15px 16px",borderRadius:14,cursor:"pointer",border:`1px solid ${isPro?T.a+"44":BDR}`,marginBottom:10,background:isPro?dk?`${T.a}06`:`${T.a}04`:"transparent"}}>
+              <div style={{width:48,height:48,borderRadius:12,background:`${T.a}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0}}>📄</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:2}}>Upload PDF</div>
+                <div style={{fontSize:12,color:C2}}>{isPro?"PRO — full PDF textbook, up to 20 pages":"PRO only — upload any PDF textbook"}</div>
+              </div>
+              {isPro?<span style={{color:C3}}>›</span>:<ProBadge/>}
+            </div>
+            <input ref={pdfRef} type="file" accept=".pdf" style={{display:"none"}} onChange={onPDF}/>
+
+            {/* URL — PRO only */}
+            <div style={{border:`1px solid ${isPro?T.a+"44":BDR}`,borderRadius:14,padding:"15px 16px",marginBottom:10,background:isPro?dk?`${T.a}06`:`${T.a}04`:"transparent"}}>
+              <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:isPro?12:0}}>
+                <div style={{width:48,height:48,borderRadius:12,background:`${T.a}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0}}>🔗</div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:2}}>URL / Website Link</div>
+                  <div style={{fontSize:12,color:C2}}>{isPro?"PRO — paste any article, Wikipedia, or study site URL":"PRO only — quiz from any website or article"}</div>
+                </div>
+                {!isPro&&<div onClick={()=>goTo("sub")} style={{cursor:"pointer"}}><ProBadge/></div>}
+              </div>
+              {isPro&&<>
+                <input
+                  ref={urlInRef}
+                  style={{...inputStyle,fontSize:13,padding:"11px 14px"}}
+                  placeholder="https://en.wikipedia.org/wiki/..."
+                  onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim())fetchURL(e.target.value.trim());}}
+                />
+                <button style={{...primaryBtn(true),marginTop:10,fontSize:13,padding:"11px"}} disabled={urlLd} onClick={()=>{const v=urlInRef.current?.value?.trim();if(v)fetchURL(v);}}>
+                  {urlLd?"⏳ Fetching page…":"🔗 Fetch & Generate Quiz"}
+                </button>
+              </>}
+            </div>
+
+            {qLd&&<div style={{textAlign:"center",padding:"24px 0"}}><div style={{fontSize:32,animation:"vSpin 1s linear infinite",display:"inline-block"}}>⚙️</div><div style={{color:C2,marginTop:10,fontSize:13}}>Reading file…</div></div>}
+          </div>}
+
+          {/* Config */}
+          {qPh==="config"&&<div style={card}>
+            <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+              {imgs.map((im,i)=><img key={i} src={im.url} style={{width:64,height:64,objectFit:"cover",borderRadius:10,border:`2px solid ${T.a}44`}}/>)}
+              {pdfInfo&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:12,background:`${T.a}14`,border:`1px solid ${T.a}33`}}><span style={{fontSize:28}}>📄</span><div><div style={{fontWeight:700,fontSize:13}}>{pdfInfo.name}</div><div style={{fontSize:12,color:C2}}>{pdfInfo.pages} pages</div></div></div>}
+              {urlLink&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:12,background:`${T.a}14`,border:`1px solid ${T.a}33`,width:"100%"}}><span style={{fontSize:28}}>🔗</span><div><div style={{fontWeight:700,fontSize:13}}>URL Source</div><div style={{fontSize:11,color:C2,wordBreak:"break-all"}}>{urlLink.slice(0,60)}{urlLink.length>60?"…":""}</div></div></div>}
+            </div>
+            <div style={{fontWeight:700,color:T.a,marginBottom:4}}>✅ Ready! AI will ask <strong>{qCnt}</strong> questions{doRep?" · wrong answers repeat 🔁":""}</div>
+            <div style={{marginTop:16,marginBottom:16}}>
+              <div style={{fontSize:11,color:C3,marginBottom:8,fontWeight:700,textTransform:"uppercase"}}>Answer Mode</div>
+              <div style={tabRow}><div style={tabBtn(inMode==="voice")} onClick={()=>setInMode("voice")}>🎙️ Voice</div><div style={tabBtn(inMode==="text")} onClick={()=>setInMode("text")}>⌨️ Text</div></div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={ghostBtn} onClick={resetQuiz}>← Back</button>
+              <button style={{...primaryBtn(),flex:1}} onClick={genQuiz} disabled={qLd}>{qLd?"⏳ AI Reading…":"🚀 Generate Quiz!"}</button>
+            </div>
+          </div>}
+
+          {/* Quiz active */}
+          {qPh==="quiz"&&qs.length>0&&<>
+            <div style={{...card,padding:16,marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div>
+                  <div style={{fontSize:10,color:C3,textTransform:"uppercase",letterSpacing:0.8}}>Question</div>
+                  <div style={{fontSize:26,fontWeight:900,color:T.a,lineHeight:1}}>{qPos+1}<span style={{fontSize:13,color:C3,fontWeight:500}}> / {qs.length}</span></div>
+                  {doRep&&qs.length>qCnt&&<div style={{fontSize:11,color:C3,marginTop:2}}>🔁 {qs.length-qCnt} repeating</div>}
+                </div>
+                <ScoreRing score={qSc} total={qAsk} sz={70}/>
+              </div>
+              <div style={{height:4,background:BDR,borderRadius:99}}><div style={{height:"100%",borderRadius:99,width:`${(qPos/Math.max(qs.length,1))*100}%`,background:`linear-gradient(90deg,${T.a},${T.b})`,transition:"width 0.55s"}}/></div>
+            </div>
+
+            <div style={qBubble}><span>❓ {qs[qPos]}</span><button onClick={()=>readQ(qs[qPos])} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,flexShrink:0,opacity:aiTalking?1:0.5}}>{aiTalking?"🔊":"🔈"}</button></div>
+
+            {qFb&&<div style={fbStyle(qRes)}><div style={{marginBottom:10}}>{qFb}</div><button onClick={()=>speakText(qFb,curV)} style={{...ghostBtn,fontSize:12,padding:"6px 12px"}}>🔊 Hear again</button></div>}
+            {pronFb&&isPro&&<div style={{padding:"13px 16px",borderRadius:14,marginBottom:14,background:dk?"rgba(167,139,250,0.08)":"rgba(124,58,237,0.06)",border:"1px solid rgba(167,139,250,0.28)"}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#a78bfa",marginBottom:6}}>🗣️ Pronunciation Tip</div>
+              <div style={{fontSize:13,color:C1,lineHeight:1.75}}>{pronFb.replace("🗣️ ","")}</div>
+              <button onClick={()=>speakText(pronFb.replace(/🗣️.*?:/,""),curV)} style={{...ghostBtn,fontSize:11,padding:"5px 11px",marginTop:8,color:"#a78bfa",borderColor:"rgba(167,139,250,0.3)"}}>🔊 Hear correct pronunciation</button>
+            </div>}
+
+            {!qRes&&<div style={card}>
+              <div style={{marginBottom:14}}><div style={tabRow}><div style={tabBtn(inMode==="voice")} onClick={()=>setInMode("voice")}>🎙️ Voice</div><div style={tabBtn(inMode==="text")} onClick={()=>setInMode("text")}>⌨️ Text</div></div></div>
+              {inMode==="voice"?<div style={{textAlign:"center"}}>
+                <div style={{marginBottom:10}}><MicBtn on={recing} onClick={recing?stopQRec:startQRec} sz={86} a={T.a} b={T.b}/></div>
+                <div style={{fontSize:13,fontWeight:600,color:recing?"#f87171":C3,marginBottom:12}}>{recing?"🔴 Listening… tap to stop":"Tap mic and speak your answer"}</div>
+                <div style={{display:"flex",justifyContent:"center",marginBottom:14}}><Waveform active={recing} a={T.a} b={T.b}/></div>
+                {tran&&<div style={trStyle}>🗣️ "{tran}"</div>}
+                {tran&&!recing&&<button style={primaryBtn(true)} onClick={submitQuiz} disabled={qLd}>{qLd?"⏳ Checking…":"✓ Submit Answer"}</button>}
+              </div>:<>
+                <textarea style={{...inputStyle,minHeight:82}} value={txtAns} onChange={e=>setTxtAns(e.target.value)} placeholder="Type your answer here…" onKeyDown={e=>e.key==="Enter"&&e.ctrlKey&&submitQuiz()}/>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
+                  <span style={{fontSize:11,color:C3}}>Ctrl+Enter to submit</span>
+                  <button style={primaryBtn()} onClick={submitQuiz} disabled={qLd}>{qLd?"⏳":"Submit ✓"}</button>
+                </div>
+              </>}
+            </div>}
+
+            <div style={{display:"flex",gap:10}}>
+              {qPos>0&&<button style={{...ghostBtn,flex:1,textAlign:"center"}} onClick={prevQuestion}>← Previous</button>}
+              {qRes&&<button style={{padding:"13px 24px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#fbbf24,#f59e0b)",color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",flex:qPos>0?1:undefined,width:qPos===0?"100%":undefined,fontFamily:"inherit",boxShadow:"0 4px 18px rgba(251,191,36,0.4)"}} onClick={nextQuestion}>{qPos+1>=qs.length?"🏁 See Score":"Next →"}</button>}
+            </div>
+          </>}
+
+          {/* Done */}
+          {qPh==="done"&&<div style={{...card,textAlign:"center",padding:"44px 24px",animation:"vPop 0.5s ease"}}>
+            <div style={{fontSize:56,marginBottom:14,animation:"vFloat 0.9s ease-in-out 4"}}>🎉</div>
+            <div style={{fontSize:22,fontWeight:800,color:T.a,marginBottom:14}}>Quiz Complete!</div>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:20}}><ScoreRing score={qSc} total={qAsk} sz={112}/></div>
+            <div style={{fontSize:14,color:C2,marginBottom:8}}>{qSc>=qAsk*0.8?"🌟 Outstanding! You truly mastered this!":qSc>=qAsk*0.5?"💪 Great effort! Keep reviewing and growing.":"📚 Practice more — every attempt builds you up!"}</div>
+            <div style={{fontSize:13,color:C3,marginBottom:28}}>Score: <strong style={{color:T.a,fontSize:16}}>{qSc} / {qAsk}</strong></div>
+            <button style={primaryBtn(true)} onClick={resetQuiz}>📸 Try Another Page</button>
+          </div>}
+        </div>}
+
+        {/* ═══════ GK ═══════ */}
+        {page==="gk"&&<div style={{animation:"vFadeUp 0.4s ease"}}>
+          <div style={{marginBottom:14}}><div style={{fontSize:20,fontWeight:800,color:T.a}}>🌍 GK Quiz</div><div style={{fontSize:13,color:C2,marginTop:2}}>General Knowledge — voice or text!</div></div>
+
+          {gkPh==="topics"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {GK_TOPICS.map(t=>(
+              <div key={t.id} onClick={()=>loadGK(t.id)} style={{...card,cursor:"pointer",textAlign:"center",padding:"22px 14px",marginBottom:0,border:`1px solid ${t.col}22`,position:"relative"}}>
+                <div style={{fontSize:34,marginBottom:8}}>{t.icon}</div>
+                <div style={{fontWeight:700,fontSize:13,color:t.col}}>{t.id}</div>
+                {t.pro&&!isPro&&<div style={{position:"absolute",top:8,right:8}}><ProBadge/></div>}
+              </div>
+            ))}
+          </div>}
+
+          {gkPh==="quiz"&&gkLd&&gkQ.length===0&&<div style={{...card,textAlign:"center",padding:60}}><div style={{fontSize:34,animation:"vSpin 1s linear infinite",display:"inline-block",marginBottom:14}}>⚙️</div><div style={{color:C2}}>Loading {gkTopic}…</div></div>}
+
+          {gkPh==="quiz"&&gkQ.length>0&&gkPos<gkQ.length&&<>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <button style={ghostBtn} onClick={()=>{setGkPh("topics");setGkTopic(null);}}>← Topics</button>
+              <div style={{display:"flex",alignItems:"center",gap:10}}><ScoreRing score={gkSc} total={gkPos+(gkRes?1:0)} sz={52}/><div style={{fontSize:12,color:C3}}>Q {gkPos+1}/{gkQ.length}</div></div>
+            </div>
+            <div style={qBubble}><span>❓ {gkQ[gkPos].q}</span><button onClick={()=>readQ(gkQ[gkPos].q)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,flexShrink:0,opacity:0.5}}>🔈</button></div>
+            {gkFb&&<div style={fbStyle(gkRes)}><div style={{marginBottom:10}}>{gkFb}</div><div style={{background:IBG,borderRadius:10,padding:"9px 14px",fontSize:13}}><span style={{color:T.a,fontWeight:700}}>Answer: </span>{gkQ[gkPos].a}</div></div>}
+            {!gkRes&&<div style={card}>
+              <div style={{marginBottom:14}}><div style={tabRow}><div style={tabBtn(gkMode==="voice")} onClick={()=>setGkMode("voice")}>🎙️ Voice</div><div style={tabBtn(gkMode==="text")} onClick={()=>setGkMode("text")}>⌨️ Text</div></div></div>
+              {gkMode==="voice"?<div style={{textAlign:"center"}}>
+                <div style={{marginBottom:10}}><MicBtn on={gkRec} onClick={gkRec?stopGkRec:startGkRec} sz={82} a={T.a} b={T.b}/></div>
+                <div style={{fontSize:13,fontWeight:600,color:gkRec?"#f87171":C3,marginBottom:12}}>{gkRec?"🔴 Listening…":"Tap mic to speak"}</div>
+                <div style={{display:"flex",justifyContent:"center",marginBottom:14}}><Waveform active={gkRec} a={T.a} b={T.b}/></div>
+                {gkTr&&<div style={trStyle}>🗣️ "{gkTr}"</div>}
+                {gkTr&&!gkRec&&<button style={primaryBtn(true)} onClick={submitGK} disabled={gkLd}>{gkLd?"⏳":"✓ Submit"}</button>}
+              </div>:<><input style={inputStyle} value={gkTxt} onChange={e=>setGkTxt(e.target.value)} placeholder="Type your answer…" onKeyDown={e=>e.key==="Enter"&&submitGK()}/><button style={{...primaryBtn(true),marginTop:10}} onClick={submitGK} disabled={gkLd}>{gkLd?"⏳":"Submit ✓"}</button></>}
+            </div>}
+            {gkRes&&<button style={{...primaryBtn(true),background:"linear-gradient(135deg,#fbbf24,#f59e0b)"}} onClick={nextGK}>{gkPos+1>=gkQ.length?"🏁 Finish":"Next →"}</button>}
+          </>}
+
+          {gkPh==="done"&&<div style={{...card,textAlign:"center",padding:"44px 24px",animation:"vPop 0.5s ease"}}>
+            <div style={{fontSize:52,marginBottom:14}}>🏆</div>
+            <div style={{fontSize:22,fontWeight:800,color:T.a,marginBottom:16}}>Topic Complete!</div>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:18}}><ScoreRing score={gkSc} total={gkPos} sz={104}/></div>
+            <div style={{fontSize:14,color:C2,marginBottom:24}}>{gkSc>=gkPos*0.8?"🌟 GK Expert! Remarkable knowledge!":gkSc>=gkPos*0.5?"💪 Keep practising — you're growing!":"📚 Daily practice builds real knowledge!"}</div>
+            <div style={{display:"flex",gap:10}}><button style={{...primaryBtn(),flex:1}} onClick={()=>loadGK(gkTopic)}>🔄 Retry</button><button style={{...ghostBtn,flex:1,textAlign:"center"}} onClick={()=>setGkPh("topics")}>🌍 Topics</button></div>
+          </div>}
+        </div>}
+
+        {/* ═══════ SPOKEN ENGLISH ═══════ */}
+        {/* ═══════ MOCK CHAT ═══════ */}
+        {page==="mock"&&<div style={{animation:"vSlide 0.4s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+            <button style={ghostBtn} onClick={()=>{goBack();setMPh("pick");setMChat([]);setMScen(null);}}>← Back</button>
+            <div><div style={{fontSize:20,fontWeight:800,color:"#fb923c"}}>🤖 AI Mock Practice</div><div style={{fontSize:12,color:C2}}>Real AI conversation — build real English confidence!</div></div>
+          </div>
+
+          {mPh==="pick"&&<>
+            <div style={{...card,textAlign:"center",padding:"18px 20px",background:dk?"rgba(251,146,60,0.08)":"rgba(251,146,60,0.05)",border:"1px solid rgba(251,146,60,0.2)"}}>
+              <div style={{fontSize:34,marginBottom:10}}>🤖</div>
+              <div style={{fontSize:15,fontWeight:800,marginBottom:8}}>Choose Your Practice Scenario</div>
+              <div style={{fontSize:13,color:C2}}>AI speaks like a real human — interview you, chat with you, debate you. You reply by voice or text!</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {MOCK_SCENARIOS.map(s=>(
+                <div key={s.id} onClick={()=>startMock(s)} style={{...card,cursor:"pointer",textAlign:"center",padding:"20px 14px",marginBottom:0,border:`1px solid ${s.color}22`,transition:"transform 0.15s"}}>
+                  <div style={{fontSize:30,marginBottom:10}}>{s.icon}</div>
+                  <div style={{fontWeight:700,fontSize:13,color:s.color,marginBottom:6}}>{s.title}</div>
+                  <div style={{fontSize:11,color:C3,lineHeight:1.5}}>{s.desc}</div>
+                </div>
+              ))}
+            </div>
+          </>}
+
+          {mPh==="chat"&&<>
+            {mLd&&mChat.length===0&&<div style={{...card,textAlign:"center",padding:50}}><div style={{fontSize:32,animation:"vSpin 1s linear infinite",display:"inline-block",marginBottom:14}}>🤖</div><div style={{color:C2}}>AI is preparing your session…</div></div>}
+            {mChat.length>0&&<>
+              <div style={{...card,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"center",gap:12,border:`1px solid ${mScen?.color}22`}}>
+                <div style={{width:40,height:40,borderRadius:12,background:`${mScen?.color}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{mScen?.icon}</div>
+                <div style={{flex:1}}><div style={{fontWeight:700,fontSize:14,color:mScen?.color}}>{mScen?.title}</div><div style={{fontSize:11,color:C3}}>AI is speaking like a real human — you reply naturally!</div></div>
+                <button style={{...ghostBtn,fontSize:11,padding:"6px 10px"}} onClick={()=>speakText(mChat[mChat.length-1]?.text||"",curV)}>🔊</button>
+              </div>
+
+              <div ref={chatBoxRef} style={{maxHeight:340,overflowY:"auto",marginBottom:14,display:"flex",flexDirection:"column",gap:10,padding:"2px"}}>
+                {mChat.map((m,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",gap:8,alignItems:"flex-end",animation:"vMsg 0.3s ease"}}>
+                    {m.role==="ai"&&<div style={{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${mScen?.color},${mScen?.color}88)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>🤖</div>}
+                    <div style={{maxWidth:"76%",padding:"12px 16px",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",background:m.role==="user"?`linear-gradient(135deg,${T.a},${T.b})`:SURF,border:m.role==="ai"?`1px solid ${BDR}`:"none",fontSize:14,lineHeight:1.65,color:m.role==="user"?"#fff":C1,boxShadow:"0 2px 10px rgba(0,0,0,0.12)"}}>{m.text}</div>
+                    {m.role==="user"&&<div style={{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${T.a},${T.b})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>👤</div>}
+                  </div>
+                ))}
+                {mLd&&<div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                  <div style={{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${mScen?.color},${mScen?.color}88)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>🤖</div>
+                  <div style={{padding:"12px 18px",borderRadius:"18px 18px 18px 4px",background:SURF,border:`1px solid ${BDR}`,display:"flex",gap:6,alignItems:"center"}}>
+                    {[0,0.25,0.5].map(d=><div key={d} style={{width:8,height:8,borderRadius:"50%",background:mScen?.color,animation:`vPulse 1.2s ${d}s infinite`}}/>)}
+                  </div>
+                </div>}
+              </div>
+
+              <div style={card}>
+                <div style={{marginBottom:12}}><div style={tabRow}><div style={tabBtn(mMode==="voice")} onClick={()=>setMMode("voice")}>🎙️ Voice</div><div style={tabBtn(mMode==="text")} onClick={()=>setMMode("text")}>⌨️ Text</div></div></div>
+                {mMode==="voice"?<div style={{textAlign:"center"}}>
+                  <div style={{marginBottom:10}}><MicBtn on={mRec} onClick={mRec?stopMRec:startMRec} sz={76} a={T.a} b={T.b}/></div>
+                  <div style={{fontSize:13,fontWeight:600,color:mRec?"#f87171":C3,marginBottom:10}}>{mRec?"🔴 Listening…":"Tap to reply"}</div>
+                  <div style={{display:"flex",justifyContent:"center",marginBottom:10}}><Waveform active={mRec} a={T.a} b={T.b}/></div>
+                  {mTr&&<div style={trStyle}>🗣️ "{mTr}"</div>}
+                  {mTr&&!mRec&&<button style={primaryBtn(true)} onClick={sendMock} disabled={mLd}>{mLd?"⏳":"Send ↗"}</button>}
+                </div>:<div style={{display:"flex",gap:10}}>
+                  <input style={{...inputStyle,flex:1}} value={mTxt} onChange={e=>setMTxt(e.target.value)} placeholder="Type your reply…" onKeyDown={e=>e.key==="Enter"&&sendMock()}/>
+                  <button style={primaryBtn()} onClick={sendMock} disabled={mLd}>↗</button>
+                </div>}
+              </div>
+              <button style={{...ghostBtn,width:"100%",textAlign:"center"}} onClick={()=>{setMPh("pick");setMChat([]);setMScen(null);}}>🔄 Change Scenario</button>
+            </>}
+          </>}
+        </div>}
+
+        {/* ═══════ SETTINGS ═══════ */}
+        {page==="settings"&&<div style={{animation:"vFadeUp 0.4s ease"}}>
+          <div style={{marginBottom:14}}><div style={{fontSize:20,fontWeight:800,color:T.a}}>⚙️ Settings & More</div><div style={{fontSize:13,color:C2,marginTop:2}}>Customise your learning experience</div></div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            <div onClick={()=>{if(!isPro){goTo("sub");return;}goTo("mock");}} style={{...card,textAlign:"center",padding:"16px 12px",marginBottom:0,border:"1px solid rgba(251,146,60,0.22)",cursor:"pointer",position:"relative"}}>
+              <div style={{fontSize:28,marginBottom:6}}>🤖</div>
+              <div style={{fontWeight:700,fontSize:12,color:"#fb923c"}}>AI Mock Chat</div>
+              {!isPro&&<div style={{position:"absolute",top:8,right:8}}><ProBadge/></div>}
+            </div>
+          </div>
+
+          {!isPro&&<div onClick={()=>goTo("sub")} style={{...card,background:dk?`linear-gradient(135deg,${T.a}16,${T.b}10)`:`linear-gradient(135deg,${T.a}12,${T.b}08)`,border:`1px solid ${T.a}35`,cursor:"pointer",display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+            <div style={{fontSize:30}}>⭐</div>
+            <div style={{flex:1}}><div style={{fontWeight:800,fontSize:15,color:T.a}}>Upgrade to PRO</div><div style={{fontSize:12,color:C2}}>₹149/6mo · All features unlocked</div></div>
+            <span style={{color:T.a,fontSize:22}}>›</span>
+          </div>}
+
+          <div style={card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontWeight:700,fontSize:15,marginBottom:2}}>{dk?"🌙 Dark Mode":"☀️ Light Mode"}</div><div style={{fontSize:13,color:C2}}>Eye-comfortable display</div></div><Toggle on={dark} onChange={setDark} a={T.a} b={T.b}/></div></div>
+
+          <div style={card}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>🎨 Colour Theme</div>
+            <div style={{fontSize:13,color:C2,marginBottom:14}}>All 6 themes are eye-friendly</div>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+              {THEMES.map((th,i)=>(
+                <div key={th.id} onClick={()=>setTIdx(i)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,cursor:"pointer"}}>
+                  <div style={{width:44,height:44,borderRadius:13,background:`linear-gradient(135deg,${th.a},${th.b})`,border:tIdx===i?"3px solid #fff":"3px solid transparent",boxShadow:tIdx===i?`0 0 0 2px ${th.a},0 4px 14px ${th.a}44`:"none",transition:"all 0.2s"}}/>
+                  <div style={{fontSize:10,color:tIdx===i?th.a:C3,fontWeight:700,textAlign:"center",maxWidth:58}}>{th.name}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><div style={{fontWeight:700,fontSize:15}}>🔊 AI Voice</div>{!isPro&&<ProBadge/>}</div>
+            <div style={{fontSize:13,color:C2,marginBottom:12}}>Choose AI teacher's voice (PRO)</div>
+            {voices.length===0?<div style={{fontSize:13,color:C3}}>Loading voices…</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:200,overflowY:"auto"}}>
+              {voices.slice(0,8).map(v=>(
+                <div key={v.name} onClick={()=>{if(!isPro){goTo("sub");return;}setSelV(v.name);setTimeout(()=>speakText("Hello! I am your Vidyai AI teacher!",v,null),100);}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:12,cursor:"pointer",border:`1px solid ${selV===v.name?T.a:BDR}`,background:selV===v.name?`${T.a}14`:"transparent"}}>
+                  <div style={{width:10,height:10,borderRadius:"50%",background:selV===v.name?T.a:C3}}/>
+                  <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:selV===v.name?T.a:C1}}>{v.name}</div><div style={{fontSize:10,color:C3}}>{v.lang}</div></div>
+                  {selV===v.name&&<span style={{color:T.a,fontWeight:800,fontSize:13}}>✓</span>}
+                </div>
+              ))}
+            </div>}
+          </div>
+
+          <div style={card}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>❓ Questions per Quiz</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
+              {[5,10,15,20,25,30].map(n=>{const lk=n>5&&!isPro;return(
+                <div key={n} onClick={()=>{if(lk){goTo("sub");return;}setQCnt(n);}} style={{padding:"10px 16px",borderRadius:12,cursor:"pointer",fontWeight:700,fontSize:14,border:`1px solid ${qCnt===n?T.a:BDR}`,background:qCnt===n?`${T.a}18`:"transparent",color:qCnt===n?T.a:lk?C3:C2,position:"relative"}}>
+                  {n}{lk&&<span style={{position:"absolute",top:-4,right:-4,fontSize:7,background:"#fbbf24",borderRadius:99,padding:"1px 4px",color:"#000",fontWeight:800}}>PRO</span>}
+                </div>
+              );})}
+            </div>
+          </div>
+
+          <div style={card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{paddingRight:14}}><div style={{fontWeight:700,fontSize:15,marginBottom:2}}>🔁 Repeat Wrong Answers</div><div style={{fontSize:13,color:C2}}>Wrong questions loop until you get them right!</div></div><Toggle on={doRep} onChange={setDoRep} a={T.a} b={T.b}/></div></div>
+
+          <div style={card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><div style={{fontWeight:700,fontSize:15}}>⏱ Study Timer</div>{!isPro&&<ProBadge/>}</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
+              {[{l:"10m",m:10},{l:"20m",m:20},{l:"30m",m:30},{l:"45m",m:45},{l:"60m",m:60},{l:"Off",m:0}].map(tt=>(
+                <div key={tt.l} onClick={()=>{if(tt.m>0&&!isPro){goTo("sub");return;}setTimerMin(tt.m);}} style={{padding:"9px 14px",borderRadius:12,cursor:"pointer",fontWeight:600,fontSize:13,border:`1px solid ${timerMin===tt.m?T.a:BDR}`,background:timerMin===tt.m?`${T.a}18`:"transparent",color:timerMin===tt.m?T.a:C2}}>{tt.l}</div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{...card,background:dk?`${T.a}08`:`${T.a}06`,border:`1px solid ${T.a}22`}}>
+            <div style={{textAlign:"center",marginBottom:16}}>
+              <div style={{fontSize:10,color:C3,letterSpacing:2.5,textTransform:"uppercase",fontWeight:700,marginBottom:10}}>Powered by</div>
+              <div onClick={openAdminPanel} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"10px 24px",borderRadius:14,background:`linear-gradient(135deg,${T.a},${T.b})`,boxShadow:`0 4px 20px ${T.a}55`,cursor:"pointer",userSelect:"none"}}>
+                <span style={{fontSize:24,fontWeight:900,letterSpacing:6,color:"#fff"}}>ZORAAK</span>
+              </div>
+            </div>
+            <div style={{height:1,background:BDR,marginBottom:14}}/>
+            <div style={{display:"flex",gap:14,alignItems:"center"}}>
+              <div style={{width:48,height:48,borderRadius:14,background:`linear-gradient(135deg,${T.a},${T.b})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"#fff",fontSize:18,flexShrink:0}}>MA</div>
+              <div><div style={{fontSize:11,color:C3,textTransform:"uppercase",letterSpacing:1,fontWeight:700,marginBottom:3}}>Founder & CEO</div><div style={{fontSize:16,fontWeight:800,color:C1}}>Mohammed Arshad V M</div><div style={{fontSize:12,color:C2}}>Zoraak Technologies</div></div>
+            </div>
+          </div>
+
+          <div style={{display:"flex",gap:10}}>
+            <button style={{...ghostBtn,flex:1,textAlign:"center"}} onClick={()=>goTo("guide")}>💡 Guide</button>
+            <button style={{...ghostBtn,flex:1,textAlign:"center"}} onClick={()=>goTo("about")}>ℹ️ About</button>
+          </div>
+        </div>}
+
+        {/* ═══════ SUBSCRIPTION ═══════ */}
+        {page==="sub"&&<div style={{animation:"vFadeUp 0.4s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}><button style={ghostBtn} onClick={goBack}>← Back</button><div><div style={{fontSize:20,fontWeight:800,color:T.a}}>⭐ Vidyai PRO</div><div style={{fontSize:12,color:C2}}>Unlock your full potential</div></div></div>
+          <div style={{...card,textAlign:"center",padding:22,border:`1px solid ${T.a}30`}}>
+            <div style={{fontSize:40,marginBottom:10,animation:"vFloat 2s ease-in-out infinite"}}>⭐</div>
+            <div style={{fontSize:22,fontWeight:900,marginBottom:6}}>Vidyai <span style={{color:T.a}}>PRO</span></div>
+            <div style={{fontSize:13,color:C2}}>Study smarter. Speak better. Grow every day.</div>
+          </div>
+          <div style={card}>
+            {[["🤖","AI Mock Chat","4 scenarios — Job Interview, Coffee Shop, Debate Club, News Anchor — real AI conversations"],
+              ["🔗","URL Quiz (NEW!)","Paste any website/article URL — AI generates quiz from that content"],
+              ["📄","PDF Upload","Upload full PDF textbooks — AI generates quiz from up to 20 pages"],
+              ["🖼️","10 Images","Upload up to 10 textbook pages per quiz session (Free: 3)"],
+              ["❓","Up to 30 Questions","Set 5 to 30 questions per quiz"],
+              ["🔊","Voice Selection","Choose your preferred AI teacher voice"],
+              ["⏱️","Study Timer","Set focused 10–60 minute sessions"],
+              ["🌍","All GK Topics","Unlock Mathematics and Space & Astronomy"],
+            ].map(([ic,t,d])=>(
+              <div key={t} style={{display:"flex",gap:12,padding:"12px 0",borderBottom:`1px solid ${BDR}`,alignItems:"flex-start"}}>
+                <div style={{width:38,height:38,borderRadius:11,background:`${T.a}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{ic}</div>
+                <div><div style={{fontWeight:700,fontSize:13,color:C1,marginBottom:2}}>{t}</div><div style={{fontSize:12,color:C2}}>{d}</div></div>
+              </div>
+            ))}
+          </div>
+          {/* Launch offer banner */}
+          <div style={{...card,background:"linear-gradient(135deg,rgba(251,191,36,0.18),rgba(245,158,11,0.10))",border:"2px solid rgba(251,191,36,0.55)",padding:"14px 18px",textAlign:"center",marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:900,color:"#fbbf24",letterSpacing:1,marginBottom:4}}>🔥 LAUNCHING OFFER — LIMITED TIME!</div>
+            <div style={{fontSize:12,color:C2}}>Regular price: <s style={{color:C3}}>₹599 / year</s> · Grab it now before it ends!</div>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+            {[
+              {label:"6 Months",price:adminCfg.price6m,was:adminCfg.was6m,sub:"₹25/month",tag:"🚀 Launch Price",highlight:false},
+              {label:"1 Year",price:adminCfg.price1y,was:adminCfg.was1y,sub:"₹21/month",tag:"🌟 Best Deal",highlight:true},
+            ].map(p=>(
+              <div key={p.label} style={{padding:"18px 12px",borderRadius:16,border:`2px solid ${p.highlight?"#fbbf24":T.a}`,background:p.highlight?"linear-gradient(135deg,rgba(251,191,36,0.14),rgba(245,158,11,0.08))":`${T.a}12`,textAlign:"center",position:"relative",boxShadow:p.highlight?"0 4px 24px rgba(251,191,36,0.28)":undefined}}>
+                <div style={{fontSize:10,fontWeight:800,color:p.highlight?"#fbbf24":T.a,marginBottom:6}}>{p.tag}</div>
+                <div style={{fontSize:11,color:C2,marginBottom:4,fontWeight:600}}>{p.label}</div>
+                <div style={{fontSize:11,color:C3,marginBottom:3}}><s>{p.was}</s></div>
+                <div style={{fontSize:28,fontWeight:900,color:p.highlight?"#fbbf24":T.a,lineHeight:1}}>{p.price}</div>
+                <div style={{fontSize:10,color:C3,marginTop:4}}>{p.sub}</div>
+                {p.highlight&&<div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:"linear-gradient(135deg,#fbbf24,#f59e0b)",color:"#000",fontSize:9,fontWeight:900,padding:"2px 10px",borderRadius:99,whiteSpace:"nowrap"}}>SAVE 58%</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* ── STEP 1: Pay via WhatsApp ── */}
+          <div style={{...card,border:`2px solid #25D366`,background:dk?"rgba(37,211,102,0.06)":"rgba(37,211,102,0.04)",padding:"18px 20px",marginBottom:12}}>
+            <div style={{fontWeight:800,fontSize:15,color:"#25D366",marginBottom:10}}>📲 Step 1 — Pay via WhatsApp</div>
+            <div style={{fontSize:13,color:C2,lineHeight:1.8,marginBottom:14}}>
+              Send payment screenshot to our WhatsApp. We'll send your activation code within a few hours.
+            </div>
+            <div style={{background:dk?"rgba(37,211,102,0.08)":"rgba(37,211,102,0.06)",borderRadius:12,padding:"12px 16px",marginBottom:14,display:"flex",gap:10,alignItems:"center"}}>
+              <span style={{fontSize:22}}>🏦</span>
+              <div>
+                <div style={{fontSize:12,color:C3,marginBottom:2}}>Pay to UPI / GPay / PhonePe</div>
+                <div style={{fontSize:15,fontWeight:800,color:"#25D366",letterSpacing:0.5}}>{adminCfg.upi}</div>
+                <div style={{fontSize:11,color:C3,marginTop:2}}>Mohammed Arshad V M · Zoraak Technologies</div>
+              </div>
+            </div>
+            <button onClick={()=>window.open(`https://wa.me/${adminCfg.waNumb}?text=${encodeURIComponent(`Hi! I want to buy Vidyai PRO.\n\nMy registered email: ${curUser?.email||"(enter your email)"}\n\nPlease send me the activation code. 🙏`)}`,"_blank")} style={{width:"100%",padding:"14px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#25D366,#128C7E)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 18px rgba(37,211,102,0.4)"}}>
+              💬 Send Screenshot on WhatsApp →
+            </button>
+            <div style={{fontSize:11,color:C3,textAlign:"center",marginTop:8}}>Usually replied within 1-2 hours · Mon–Sat 9AM–8PM</div>
+          </div>
+
+          {/* ── STEP 2: Enter Activation Code ── */}
+          <div style={{...card,border:`2px solid ${actOk?"#34d399":T.a}44`,padding:"18px 20px"}}>
+            <div style={{fontWeight:800,fontSize:15,color:actOk?"#34d399":T.a,marginBottom:6}}>
+              {actOk?"✅ PRO Activated! Welcome!":"🔑 Step 2 — Enter Activation Code"}
+            </div>
+            {!actOk&&<>
+              <div style={{fontSize:13,color:C2,marginBottom:14,lineHeight:1.7}}>
+                After payment, we'll WhatsApp you a <strong>16-character code</strong> tied to your email <span style={{color:T.a,fontWeight:700}}>{curUser?.email}</span>
+              </div>
+              <input
+                style={{...inputStyle,letterSpacing:3,fontSize:16,fontWeight:700,textTransform:"uppercase",textAlign:"center",marginBottom:10}}
+                placeholder="XXXX XXXX XXXX XXXX"
+                maxLength={20}
+                value={actCode}
+                onChange={e=>{ setActCode(e.target.value.replace(/\s/g,"")); setActErr(""); }}
+                onKeyDown={e=>e.key==="Enter"&&verifyActCode()}
+              />
+              {actErr&&<div style={{padding:"10px 14px",borderRadius:10,background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.28)",color:"#f87171",fontSize:13,marginBottom:10}}>{actErr}</div>}
+              <button onClick={verifyActCode} disabled={actLd||!actCode.trim()} style={{...primaryBtn(true),opacity:actLd||!actCode.trim()?0.6:1}}>
+                {actLd?<span style={{display:"inline-block",animation:"vSpin 0.8s linear infinite"}}>⏳</span>:"🔓 Activate PRO"}
+              </button>
+            </>}
+            {actOk&&<div style={{textAlign:"center",padding:"14px 0"}}>
+              <div style={{fontSize:44,marginBottom:8}}>🎉</div>
+              <div style={{fontSize:15,fontWeight:700,color:"#34d399"}}>All PRO features unlocked!</div>
+              <div style={{fontSize:12,color:C2,marginTop:4}}>Returning to app...</div>
+            </div>}
+          </div>
+
+          <div style={{...card,background:`${T.a}06`,border:`1px solid ${T.a}14`,textAlign:"center",padding:"14px 16px"}}>
+            <div style={{fontSize:12,color:C3,lineHeight:1.8}}>
+              🔐 Your code is <strong>unique to your email</strong> — cannot be shared or reused by others<br/>
+              📞 Support: <span style={{color:T.a}}>Vidyaisupport@gmail.com</span>
+            </div>
+          </div>
+          <button style={{...ghostBtn,width:"100%",marginTop:4,textAlign:"center"}} onClick={goBack}>Continue Free</button>
+        </div>}
+
+        {/* ═══════ GUIDE ═══════ */}
+        {page==="guide"&&<div style={{animation:"vSlide 0.4s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}><button style={ghostBtn} onClick={goBack}>← Back</button><div style={{fontSize:20,fontWeight:800,color:T.a}}>💡 How to Use Vidyai</div></div>
+          {[{ic:"📸",col:"#34d399",title:"Scan & Quiz",steps:["Go to Quiz tab → choose Single Image (free) or Multi/PDF (PRO)","Photo any textbook page — AI reads and creates questions automatically","Choose Voice or Text mode to answer each question","Tap '← Previous' anytime to go back and review past questions!"]},
+            {ic:"🤖",col:"#fb923c",title:"AI Mock Chat (PRO)",steps:["Go to Settings or Home → AI Mock Chat","Choose: Job Interview, Coffee Shop, Debate Club, or News Anchor","AI starts the conversation speaking like a real human being","You reply by voice or text — AI responds naturally, challenges you, helps you grow!"]},
+            {ic:"⬅️",col:T.a,title:"Previous Question Button",steps:["While in a quiz, tap '← Previous' to go back any time","See your old answer and AI feedback again","Good for reviewing before finishing","Works in both voice and text mode"]},
+            {ic:"🔁",col:"#fbbf24",title:"Smart Repeat System",steps:["Wrong answers automatically re-queue at the end","Progress bar shows '🔁 X repeating'","Questions loop until you answer correctly","Toggle this OFF in Settings for linear mode"]},
+          ].map((s,i)=>(
+            <div key={i} style={{...card,borderLeft:`3px solid ${s.col}`}}>
+              <div style={{fontWeight:700,fontSize:15,color:s.col,marginBottom:10}}>{s.ic} {s.title}</div>
+              {s.steps.map((st,j)=><div key={j} style={{display:"flex",gap:10,marginBottom:8,fontSize:13,color:C2}}><span style={{color:s.col,fontWeight:800,flexShrink:0}}>{j+1}.</span><span style={{lineHeight:1.65}}>{st}</span></div>)}
+            </div>
+          ))}
+          <div style={{...card,background:`${T.a}08`,border:`1px solid ${T.a}22`}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>🎥 Video Tutorial</div>
+            <div onClick={()=>window.open("https://youtube.com","_blank")} style={{borderRadius:14,background:dk?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.04)",border:`1px solid ${BDR}`,padding:"40px 20px",textAlign:"center",cursor:"pointer"}}>
+              <div style={{fontSize:44,marginBottom:10}}>▶️</div>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>Vidyai Tutorial — Coming Soon on YouTube</div>
+              <div style={{fontSize:12,color:C3}}>Subscribe to Zoraak on YouTube</div>
+            </div>
+          </div>
+        </div>}
+
+        {/* ═══════ ABOUT ═══════ */}
+        {page==="about"&&<div style={{animation:"vSlide 0.4s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}><button style={ghostBtn} onClick={goBack}>← Back</button><div><div style={{fontSize:20,fontWeight:800,color:T.a}}>ℹ️ About Vidyai</div><div style={{fontSize:12,color:C2}}>Version 1.0 · Phase 1</div></div></div>
+          <div style={{...card,textAlign:"center",padding:"28px 22px",border:`1px solid ${T.a}28`}}>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:14}}><VLogo s={64} a={T.a} b={T.b}/></div>
+            <div style={{fontSize:30,fontWeight:900,color:C1,marginBottom:6,letterSpacing:-0.5}}>Vid<span style={{color:T.a}}>yai</span></div>
+            <div style={{fontSize:11,color:C3,letterSpacing:2,textTransform:"uppercase",marginBottom:14}}>AI Voice Study Companion</div>
+            <div style={{fontSize:13,color:C2,lineHeight:1.8,maxWidth:320,margin:"0 auto"}}>Helping every student master their subjects, speak confident American English, and grow into the best version of themselves — through AI-powered voice learning, available 24/7.</div>
+          </div>
+          <div style={{...card,border:`1px solid ${T.a}28`,background:dk?`${T.a}08`:`${T.a}06`}}>
+            <div style={{textAlign:"center",marginBottom:18}}>
+              <div style={{fontSize:10,color:C3,letterSpacing:2.5,textTransform:"uppercase",fontWeight:700,marginBottom:10}}>Powered by</div>
+              <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"10px 28px",borderRadius:14,background:`linear-gradient(135deg,${T.a},${T.b})`,boxShadow:`0 4px 22px ${T.a}55`}}>
+                <span style={{fontSize:26,fontWeight:900,letterSpacing:6,color:"#fff"}}>ZORAAK</span>
+              </div>
+              <div style={{fontSize:12,color:C3,marginTop:10}}>Technology for Education & Human Growth</div>
+            </div>
+            <div style={{height:1,background:BDR,marginBottom:16}}/>
+            <div style={{display:"flex",gap:14,alignItems:"center"}}>
+              <div style={{width:54,height:54,borderRadius:16,background:`linear-gradient(135deg,${T.a},${T.b})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"#fff",fontSize:18,flexShrink:0}}>MA</div>
+              <div><div style={{fontSize:11,color:C3,textTransform:"uppercase",letterSpacing:1,fontWeight:700,marginBottom:3}}>Inventor & Founder</div><div style={{fontSize:17,fontWeight:800,color:C1}}>Mohammed Arshad V M</div><div style={{fontSize:12,color:C2,marginTop:2}}>Zoraak Technologies</div></div>
+            </div>
+          </div>
+          <div style={{...card,background:`${T.a}06`,border:`1px solid ${T.a}18`}}>
+            <div style={{fontWeight:700,fontSize:14,color:T.a,marginBottom:12}}>🏷️ Intellectual Property Notice</div>
+            <div style={{fontSize:13,color:C2,lineHeight:1.75}}>Vidyai — including the AI Voice Study Companion concept, Shadowing-based English learning system, AI Mock Conversation interface, and the overall app architecture — is an original invention by Mohammed Arshad V M, Zoraak Technologies.</div>
+            <div style={{fontSize:12,color:C3,marginTop:8}}>© 2025 Zoraak Technologies. All rights reserved. Patent Pending.</div>
+          </div>
+          <div style={card}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:14}}>📬 Contact & Support</div>
+            {[{ic:"✉️",lb:"Support Email",val:"Vidyaisupport@gmail.com",fn:()=>window.open("mailto:Vidyaisupport@gmail.com")},{ic:"🌐",lb:"Website",val:"zoraak.com (coming soon)",fn:null},{ic:"📱",lb:"App Version",val:"1.0.0 — Phase 1",fn:null}].map((ct,i)=>(
+              <div key={i} onClick={ct.fn} style={{display:"flex",gap:14,alignItems:"center",padding:"12px 0",borderBottom:`1px solid ${BDR}`,cursor:ct.fn?"pointer":"default"}}>
+                <span style={{fontSize:22}}>{ct.ic}</span>
+                <div style={{flex:1}}><div style={{fontSize:11,color:C3,marginBottom:2}}>{ct.lb}</div><div style={{fontSize:14,fontWeight:600,color:ct.fn?T.a:C1}}>{ct.val}</div></div>
+                {ct.fn&&<span style={{color:C3}}>›</span>}
+              </div>
+            ))}
+          </div>
+          <div style={{...card,fontSize:12,color:C3,lineHeight:1.9,textAlign:"center"}}>
+            <div>© 2025 Zoraak Technologies. All rights reserved.</div>
+
+            <div style={{marginTop:8,display:"flex",justifyContent:"center",gap:20}}>
+              <span onClick={()=>{goTo("terms");}} style={{cursor:"pointer",color:T.a,fontWeight:600}}>Privacy Policy</span>
+              <span onClick={()=>{goTo("privacy");}} style={{cursor:"pointer",color:T.a,fontWeight:600}}>Terms of Service</span>
+            </div>
+          </div>
+        </div>}
+
+        {/* ═══════ TERMS OF SERVICE ═══════ */}
+        {page==="terms"&&<div style={{animation:"vSlide 0.4s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}><button style={ghostBtn} onClick={goBack}>← Back</button><div style={{fontSize:18,fontWeight:800,color:T.a}}>📋 Terms of Service</div></div>
+          {[
+            {title:"1. Acceptance of Terms",body:"By creating an account and using Vidyai, you agree to be bound by these Terms of Service. If you do not agree, please do not use the app."},
+            {title:"2. Description of Service",body:"Vidyai is an AI-powered educational platform that helps students learn through voice and text-based quizzes, general knowledge tests, and AI mock conversations. The service is provided by Zoraak Technologies."},
+            {title:"3. User Accounts",body:"You are responsible for maintaining the confidentiality of your account credentials. You must provide accurate information when creating your account. You are solely responsible for all activity that occurs under your account."},
+            {title:"4. Free & PRO Plans",body:"Vidyai offers a Free plan and a PRO plan. Free users are limited to 3 image uploads per day. PRO features are unlocked via a one-time activation code after payment. PRO status is tied to your registered email and can be accessed from any device."},
+            {title:"5. Payment & Refunds",body:"Payment is collected manually via UPI/GPay/PhonePe. Activation codes are non-transferable and unique to your email address. We do not offer refunds once an activation code has been successfully redeemed. If you experience technical issues, contact Vidyaisupport@gmail.com."},
+            {title:"6. Acceptable Use",body:"You agree not to misuse the service, attempt to reverse-engineer the app, share activation codes with others, create fake accounts, or use the service for any unlawful purpose."},
+            {title:"7. Intellectual Property",body:"All content, branding, and technology in Vidyai are the intellectual property of Zoraak Technologies. Patent Pending. Unauthorised reproduction or distribution is prohibited."},
+            {title:"8. Disclaimers",body:"Vidyai uses AI to generate quiz questions and feedback. While we strive for accuracy, AI-generated content may occasionally contain errors. Always verify important information with your teachers or official study materials."},
+            {title:"9. Limitation of Liability",body:"Zoraak Technologies shall not be liable for any indirect, incidental, or consequential damages arising from your use of Vidyai. The service is provided 'as is' without warranties of any kind."},
+            {title:"10. Changes to Terms",body:"We may update these terms from time to time. Continued use of Vidyai after changes constitutes your acceptance of the new terms. We will notify users of significant changes via the app."},
+            {title:"11. Contact",body:"For any queries regarding these Terms, please contact us at Vidyaisupport@gmail.com or WhatsApp +91 9567325132."},
+          ].map(s=>(
+            <div key={s.title} style={{...card,marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:14,color:T.a,marginBottom:6}}>{s.title}</div>
+              <div style={{fontSize:13,color:C2,lineHeight:1.85}}>{s.body}</div>
+            </div>
+          ))}
+          <div style={{textAlign:"center",fontSize:11,color:C3,marginTop:8,marginBottom:16}}>Last updated: March 2025 · Zoraak Technologies · Patent Pending</div>
+        </div>}
+
+        {/* ═══════ PRIVACY POLICY ═══════ */}
+        {page==="privacy"&&<div style={{animation:"vSlide 0.4s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}><button style={ghostBtn} onClick={goBack}>← Back</button><div style={{fontSize:18,fontWeight:800,color:T.a}}>🔒 Privacy Policy</div></div>
+          {[
+            {title:"1. Information We Collect",body:"We collect the information you provide when creating an account: name, email address, and optionally your phone number. We also store your quiz scores, streak data, and study statistics to improve your learning experience."},
+            {title:"2. How We Store Your Data",body:"All your personal data is stored locally on your device using browser storage. We do not operate a central server that stores your personal information. Your password is hashed with SHA-256 encryption and is never stored in plain text."},
+            {title:"3. Data We Do NOT Collect",body:"We do not collect your location, device identifiers, browsing history, or any data beyond what is needed to operate the app. We do not sell, rent, or share your personal data with any third parties."},
+            {title:"4. AI Processing",body:"When you use quiz or AI chat features, your text or voice input is sent to the Anthropic AI API to generate responses. Anthropic's privacy policy applies to this processing. We do not store the content of your quiz answers on our servers."},
+            {title:"5. Payment Information",body:"Payment is processed manually via UPI/GPay. We do not collect or store your bank details, card numbers, or UPI PIN. We only verify payment via a screenshot shared by you on WhatsApp."},
+            {title:"6. Data Security",body:"We implement SHA-256 hashing for passwords, tamper-proof PRO verification tokens, brute-force login protection, and session timeout after inactivity to keep your account secure."},
+            {title:"7. Children's Privacy",body:"Vidyai is suitable for users aged 13 and above. We do not knowingly collect personal information from children under 13. If you believe a child has provided us with personal information, please contact us."},
+            {title:"8. Your Rights",body:"You may delete your account at any time from the Profile page. Deleting your account removes all your data from local storage. You may also contact us to request data deletion or correction."},
+            {title:"9. Cookies & Tracking",body:"Vidyai does not use cookies or tracking pixels. We do not display advertisements. The app is completely ad-free."},
+            {title:"10. Changes to This Policy",body:"We may update this Privacy Policy periodically. We will notify you of significant changes through the app. Continued use after changes means you accept the updated policy."},
+            {title:"11. Contact Us",body:"If you have any privacy concerns or requests, please contact: Vidyaisupport@gmail.com · WhatsApp +91 9567325132 · Zoraak Technologies, Kerala, India."},
+          ].map(s=>(
+            <div key={s.title} style={{...card,marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:14,color:T.a,marginBottom:6}}>{s.title}</div>
+              <div style={{fontSize:13,color:C2,lineHeight:1.85}}>{s.body}</div>
+            </div>
+          ))}
+          <div style={{textAlign:"center",fontSize:11,color:C3,marginTop:8,marginBottom:16}}>Last updated: March 2025 · Zoraak Technologies</div>
+        </div>}
+
+        {/* ═══════ PROFILE ═══════ */}
+        {page==="profile"&&<div style={{animation:"vSlide 0.4s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+            <button style={ghostBtn} onClick={goBack}>← Back</button>
+            <div><div style={{fontSize:20,fontWeight:800,color:T.a}}>👤 My Profile</div><div style={{fontSize:12,color:C2}}>Your account & stats</div></div>
+          </div>
+
+          {/* Avatar + Info card */}
+          <div style={{...card,background:dk?`linear-gradient(135deg,${T.a}18,${T.b}0e,rgba(9,14,26,0.9))`:`linear-gradient(135deg,${T.a}12,${T.b}08,rgba(255,255,255,0.9))`,border:`1px solid ${T.a}30`,padding:"22px 20px",textAlign:"center"}}>
+            <div style={{width:76,height:76,borderRadius:"50%",background:`linear-gradient(135deg,${T.a},${T.b})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:30,color:"#fff",margin:"0 auto 14px",boxShadow:`0 6px 24px ${T.a}55`,animation:"vFloat 3s ease-in-out infinite"}}>
+              {curUser?.name?curUser.name[0].toUpperCase():"U"}
+            </div>
+            <div style={{fontSize:20,fontWeight:800,color:C1,marginBottom:4}}>{curUser?.name||"User"}</div>
+            <div style={{fontSize:13,color:C2,marginBottom:8}}>{curUser?.email}</div>
+            {curUser?.phone&&<div style={{fontSize:12,color:C3,marginBottom:8}}>📱 {curUser.phone}</div>}
+            <div style={{display:"flex",justifyContent:"center",gap:10,flexWrap:"wrap"}}>
+              {isPro
+                ? <span style={{fontSize:11,fontWeight:800,padding:"4px 14px",borderRadius:99,background:"linear-gradient(135deg,#fbbf24,#f59e0b)",color:"#000",letterSpacing:0.8,boxShadow:"0 2px 12px rgba(251,191,36,0.5)"}}>⭐ Vidyai PRO</span>
+                : <span style={{fontSize:11,fontWeight:700,padding:"4px 14px",borderRadius:99,background:dk?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.06)",color:C3,border:`1px solid ${BDR}`}}>Free Plan</span>
+              }
+              <span style={{fontSize:11,padding:"4px 12px",borderRadius:99,background:`${T.a}14`,color:T.a,fontWeight:700}}>
+                🗓 Since {curUser?.createdAt?new Date(curUser.createdAt).toLocaleDateString("en-IN",{month:"short",year:"numeric"}):"—"}
+              </span>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div style={{...card,padding:"18px 20px"}}>
+            <div style={{fontWeight:700,fontSize:14,color:T.a,marginBottom:14}}>📊 My Study Stats</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {[
+                {ic:"🎯",label:"Quiz Sessions",val:totalSessions},
+                {ic:"🔥",label:"Day Streak",val:streak||0},
+                {ic:"❓",label:"Questions Done",val:totalQAnswered},
+                {ic:"⭐",label:"Total Points",val:totalPts},
+                {ic:"🌍",label:"GK Topics Done",val:gkSc>0?Math.ceil(gkSc/5):0},
+              ].map(s=>(
+                <div key={s.label} style={{background:IBG,borderRadius:14,padding:"14px 16px",border:`1px solid ${BDR}`,textAlign:"center"}}>
+                  <div style={{fontSize:26,marginBottom:6}}>{s.ic}</div>
+                  <div style={{fontSize:22,fontWeight:900,color:T.a,marginBottom:2}}>{s.val}</div>
+                  <div style={{fontSize:11,color:C3,fontWeight:600}}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* PRO status or upgrade */}
+          {isPro
+            ? <div style={{...card,background:dk?"linear-gradient(135deg,rgba(251,191,36,0.12),rgba(245,158,11,0.07))":"linear-gradient(135deg,rgba(251,191,36,0.1),rgba(245,158,11,0.06))",border:"1px solid rgba(251,191,36,0.4)",padding:"18px 20px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{fontSize:36,animation:"vFloat 2s ease-in-out infinite"}}>⭐</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:800,fontSize:15,color:"#fbbf24"}}>Vidyai PRO — Active ✅</div>
+                    <div style={{fontSize:12,color:C2,marginTop:4}}>All features unlocked · AI Mock · PDF · URL · 10 images · All GK</div>
+                  </div>
+                </div>
+              </div>
+            : <div onClick={()=>goTo("sub")} style={{...card,background:dk?`linear-gradient(135deg,${T.a}16,${T.b}10)`:`linear-gradient(135deg,${T.a}12,${T.b}08)`,border:`1px solid ${T.a}38`,cursor:"pointer",display:"flex",alignItems:"center",gap:14,animation:"vGlow 3s ease-in-out infinite"}}>
+                <div style={{fontSize:32,animation:"vFloat 2s ease-in-out infinite"}}>⭐</div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:800,fontSize:15,color:T.a}}>Upgrade to Vidyai PRO</div>
+                  <div style={{fontSize:12,color:C2,marginTop:2}}>AI Chat · PDF · URL Quiz · 10 Images · All GK</div>
+                  <div style={{fontSize:14,fontWeight:900,color:"#fbbf24",marginTop:4}}>₹149 <span style={{fontSize:11,fontWeight:400,color:C3}}>/ 6 months</span></div>
+                </div>
+                <span style={{color:T.a,fontSize:22}}>›</span>
+              </div>
+          }
+
+          {/* Edit Profile */}
+          <div style={card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:profEdit?14:0}}>
+              <div style={{fontWeight:700,fontSize:14,color:C1}}>✏️ Edit Profile</div>
+              <button onClick={()=>{if(!profEdit){setProfName(curUser?.name||"");setProfPhone(curUser?.phone||"");}setProfEdit(v=>!v);setProfMsg("");}} style={{...ghostBtn,padding:"6px 14px",fontSize:12}}>{profEdit?"Cancel":"Edit"}</button>
+            </div>
+            {profEdit&&<>
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                <input style={inputStyle} placeholder="Full name" value={profName} onChange={e=>setProfName(e.target.value)}/>
+                <input style={inputStyle} placeholder="Phone number (optional)" value={profPhone} onChange={e=>setProfPhone(e.target.value)}/>
+              </div>
+              <button style={{...primaryBtn(true),marginTop:12}} onClick={saveProfileEdit}>Save Changes</button>
+            </>}
+            {profMsg&&<div style={{marginTop:10,fontSize:13,color:profMsg.startsWith("✅")?"#34d399":"#f87171",fontWeight:600}}>{profMsg}</div>}
+          </div>
+
+          {/* Change Password */}
+          <div style={card}>
+            <div style={{fontWeight:700,fontSize:14,color:C1,marginBottom:14}}>🔒 Change Password</div>
+            <div style={{display:"flex",flexDirection:"column",gap:11}}>
+              <input style={inputStyle} type="password" placeholder="Current password" value={cpOld} onChange={e=>{setCpOld(e.target.value);setCpErr("");}}/>
+              <input style={inputStyle} type="password" placeholder="New password (min 6)" value={cpNew} onChange={e=>{setCpNew(e.target.value);setCpErr("");}}/>
+              <input style={inputStyle} type="password" placeholder="Confirm new password" value={cpNew2} onChange={e=>{setCpNew2(e.target.value);setCpErr("");}} onKeyDown={e=>e.key==="Enter"&&changePassword()}/>
+              {cpErr&&<div style={{fontSize:13,color:"#f87171",fontWeight:600}}>⚠️ {cpErr}</div>}
+              {cpMsg&&<div style={{fontSize:13,color:"#34d399",fontWeight:600}}>{cpMsg}</div>}
+              <button style={primaryBtn(true)} onClick={changePassword}>🔒 Update Password</button>
+            </div>
+          </div>
+
+          {/* Danger Zone */}
+          <div style={{...card,border:"1px solid rgba(248,113,113,0.25)",background:dk?"rgba(248,113,113,0.04)":"rgba(248,113,113,0.03)"}}>
+            <div style={{fontWeight:700,fontSize:14,color:"#f87171",marginBottom:14}}>⚠️ Account Actions</div>
+            <button onClick={doLogout} style={{width:"100%",padding:"13px",borderRadius:12,border:"1px solid rgba(248,113,113,0.3)",background:"transparent",color:"#f87171",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}>
+              🚪 Sign Out
+            </button>
+            {!showDelConf
+              ? <button onClick={()=>setShowDelConf(true)} style={{width:"100%",padding:"12px",borderRadius:12,border:"1px solid rgba(248,113,113,0.2)",background:"transparent",color:C3,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+                  🗑️ Delete Account
+                </button>
+              : <div style={{background:"rgba(248,113,113,0.08)",borderRadius:14,padding:"16px",border:"1px solid rgba(248,113,113,0.3)"}}>
+                  <div style={{fontSize:14,fontWeight:700,color:"#f87171",marginBottom:6}}>Are you sure?</div>
+                  <div style={{fontSize:12,color:C2,marginBottom:14}}>This will permanently delete your account and all data. This cannot be undone.</div>
+                  <div style={{display:"flex",gap:10}}>
+                    <button onClick={()=>setShowDelConf(false)} style={{...ghostBtn,flex:1,textAlign:"center",fontSize:13}}>Cancel</button>
+                    <button onClick={deleteAccount} style={{flex:1,padding:"11px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#f87171,#ef4444)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Yes, Delete</button>
+                  </div>
+                </div>
+            }
+          </div>
+
+          <div style={{...card,background:`${T.a}06`,border:`1px solid ${T.a}14`,textAlign:"center",padding:"14px 16px"}}>
+            <div style={{fontSize:11,color:C3,lineHeight:1.7}}>🔐 Your data is stored locally on this device.<br/>Password is SHA-256 encrypted — never stored as plain text.</div>
+          </div>
+        </div>}
+
+      </main>
+
+      {!noFullNav&&(
+        <footer style={{textAlign:"center",padding:"10px 20px",fontSize:11,color:C3,borderTop:`1px solid ${BDR}`}}>
+          ✦ Vidyai · Powered by <strong style={{color:T.a}}>Zoraak</strong> · © 2025 Mohammed Arshad V M · Patent Pending
+        </footer>
+      )}
+    </div>
+  );
+}
+
+
+export default Vidyai;
