@@ -1209,7 +1209,7 @@ ${urlTxt.slice(0,6000)}`;
   );
 
   if(authSc==="splash") return(
-    <div style={{minHeight:"100vh",background:AB,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"28px 24px",fontFamily:"'Sora',sans-serif",textAlign:"center"}}>
+    <div style={{minHeight:"100vh",background:AB,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",paddingTop:"8vh",padding:"8vh 24px 40px",fontFamily:"'Sora',sans-serif",textAlign:"center",overflowY:"auto"}}>
       <style>{AS}</style>
       <div style={{animation:"vFloat 3s ease-in-out infinite",marginBottom:18}}><AuthLogo/></div>
       <div style={{animation:"vFadeUp 0.5s ease",marginBottom:8}}>
