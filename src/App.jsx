@@ -1,4 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
+import 'firebase/app';
+import 'firebase/auth';
+import 'firebase/firestore';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 
 /* ═══════════════════════════════════════════
    VIDYAI — Original invention by Mohammed Arshad V M
