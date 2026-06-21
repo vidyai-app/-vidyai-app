@@ -257,7 +257,7 @@ function AuthLogo() {
 function Vidyai() {
   // ─── AUTH ───
   const [isPro,setIsPro]=useState(false);
-  const [authSc,setAuthSc]=useState("loading"); // loading|splash|login|signup|app|terms|privacy
+  const [authSc,setAuthSc]=useState("splash"); // loading|splash|login|signup|app|terms|privacy
   const [curUser,setCurUser]=useState(null);
   const [aName,setAName]=useState("");
   const [aEmail,setAEmail]=useState("");
