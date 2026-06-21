@@ -56,6 +56,40 @@
 
   <div id="root"></div>
 
+  <script>
+    const hideLoadingScreen = () => {
+      const ls = document.getElementById('loading-screen');
+      if (ls) { ls.classList.add('hide'); setTimeout(() => ls.remove(), 600); }
+    };
+    const showAppError = (msg) => {
+      hideLoadingScreen();
+      if (document.getElementById('app-error-panel')) return;
+      const panel = document.createElement('div');
+      panel.id = 'app-error-panel';
+      panel.style.background = '#06090f';
+      panel.style.color = '#fff';
+      panel.style.position = 'fixed';
+      panel.style.inset = '0';
+      panel.style.zIndex = '10000';
+      panel.style.display = 'flex';
+      panel.style.alignItems = 'center';
+      panel.style.justifyContent = 'center';
+      panel.style.padding = '24px';
+      panel.style.textAlign = 'center';
+      panel.style.fontFamily = 'Arial, sans-serif';
+      panel.innerHTML = `<div style="max-width:480px;line-height:1.6;"><div style="font-size:22px;font-weight:700;margin-bottom:12px">Unable to load Vidyai</div><div style="color:rgba(255,255,255,0.88);">${msg}</div><div style="margin-top:16px;font-size:14px;color:rgba(148,163,184,0.9);">Please refresh the page or check your internet connection.</div></div>`;
+      document.body.appendChild(panel);
+    };
+    window.addEventListener('error', (event) => {
+      console.error('App load error:', event.error || event.message);
+      showAppError('An unexpected error occurred while opening the app.');
+    }, true);
+    window.addEventListener('unhandledrejection', (event) => {
+      console.error('Unhandled rejection:', event.reason);
+      showAppError('An unexpected error occurred while opening the app.');
+    }, true);
+  </script>
+
   <!-- React 18 CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -80,6 +114,7 @@ const { useState, useRef, useEffect } = React;
    ═══════════════════════════════════════════ */
 
 // OpenRouter API — via secure Netlify function (key hidden server-side)
+const AI_ENDPOINTS = ["/.netlify/functions/ai", "/api/ai"];
 async function aiCall(msgs, sys = "", tok = 1400) {
   // Build OpenRouter-compatible messages (supports images)
   const outMsgs = [];
@@ -97,14 +132,27 @@ async function aiCall(msgs, sys = "", tok = 1400) {
       outMsgs.push({role: m.role||"user", content: m.content||""});
     }
   }
-  const r = await fetch("/.netlify/functions/ai", {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({messages: outMsgs, max_tokens: tok})
-  });
-  const d = await r.json();
-  if(!r.ok) throw new Error("API Error: "+(d.error||"Unknown error"));
-  return d.result || "";
+
+  let lastError = "";
+  for (const endpoint of AI_ENDPOINTS) {
+    try {
+      const r = await fetch(endpoint, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({messages: outMsgs, max_tokens: tok})
+      });
+      const text = await r.text();
+      let d;
+      try { d = JSON.parse(text); } catch { d = null; }
+      if (r.ok) {
+        return (d && d.result) ? d.result : (typeof text === 'string' ? text : "");
+      }
+      lastError = d?.error || text || `HTTP ${r.status}`;
+    } catch (err) {
+      lastError = err.message || String(err);
+    }
+  }
+  throw new Error("AI API Error: " + lastError);
 }
 
 const SR_API = window.SpeechRecognition || window.webkitSpeechRecognition;
