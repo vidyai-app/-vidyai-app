@@ -2291,3 +2291,4 @@ ${urlTxt.slice(0,6000)}`;
 
 
 export default Vidyai;
+
