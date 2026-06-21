@@ -439,7 +439,7 @@ function Vidyai() {
           console.log("[Vidyai] Auth timeout - showing splash screen");
           setAuthSc("splash");
         }
-      }, 5000);
+      }, 1500);
       
       const unsub = fbAuth.onAuthStateChanged(async(fbUser)=>{
         clearTimeout(authTimeout);
@@ -497,7 +497,7 @@ function Vidyai() {
         console.log("[Vidyai] EMERGENCY FALLBACK: Forcing splash screen");
         setAuthSc("splash");
       }
-    }, 6000);
+    }, 2000);
     return () => clearTimeout(emergencyTimer);
   }, [authSc]);
 
