@@ -9,6 +9,7 @@
   <meta name="description" content="Vidyai — AI Voice Study Companion by Zoraak Technologies" />
   <title>Vidyai — AI Voice Study Companion</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800;900&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #06090f; font-family: 'Sora', sans-serif; overflow-x: hidden; }
     #root { min-height: 100vh; }
@@ -34,7 +35,6 @@
     }
     @keyframes loadSpin { 0%,100%{transform:rotate(0deg) scale(1)}50%{transform:rotate(180deg) scale(1.1)} }
     @keyframes loadBar { 0%{width:0%} 100%{width:100%} }
-    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800;900&display=swap');
   </style>
 </head>
 <body>
@@ -66,10 +66,10 @@
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
 
   <!-- Babel Standalone (JSX transpiler) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
 
   <!-- Vidyai App -->
-  <script type="text/babel" data-presets="react">
+  <script type="text/babel" data-presets="react,env">
 const { useState, useRef, useEffect } = React;
 
 
@@ -97,7 +97,7 @@ async function aiCall(msgs, sys = "", tok = 1400) {
       outMsgs.push({role: m.role||"user", content: m.content||""});
     }
   }
-  const r = await fetch("/.const r = await fetch("/api/ai", {", {
+  const r = await fetch("/api/ai", {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({messages: outMsgs, max_tokens: tok})
