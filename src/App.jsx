@@ -430,9 +430,19 @@ function Vidyai() {
   useEffect(()=>{
     console.log("[Vidyai] Setting up auth listener...");
     let isMounted = true;
+    let authTimeout;
     
     try {
+      // Safety timeout: if auth doesn't respond within 5s, show splash anyway
+      authTimeout = setTimeout(() => {
+        if(isMounted && authSc === "loading") {
+          console.log("[Vidyai] Auth timeout - showing splash screen");
+          setAuthSc("splash");
+        }
+      }, 5000);
+      
       const unsub = fbAuth.onAuthStateChanged(async(fbUser)=>{
+        clearTimeout(authTimeout);
         console.log("[Vidyai] Auth state changed:", fbUser ? fbUser.email : "no user");
         if(!isMounted) return;
         
@@ -470,10 +480,12 @@ function Vidyai() {
       console.log("[Vidyai] Auth listener registered");
       return ()=>{
         isMounted = false;
+        clearTimeout(authTimeout);
         unsub();
       };
     } catch(e) {
       console.error("[Vidyai] Failed to set up auth listener:", e);
+      clearTimeout(authTimeout);
       setAuthSc("splash");
     }
   },[]);
