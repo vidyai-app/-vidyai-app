@@ -97,7 +97,7 @@ async function aiCall(msgs, sys = "", tok = 1400) {
       outMsgs.push({role: m.role||"user", content: m.content||""});
     }
   }
-  const r = await fetch("/.netlify/functions/ai", {
+  const r = await fetch("/.const r = await fetch("/api/ai", {", {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({messages: outMsgs, max_tokens: tok})
