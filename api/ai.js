@@ -15,7 +15,7 @@ export default async function handler(req, res) {
         "HTTP-Referer": "https://vidyai-app.vercel.app",
         "X-Title": "Vidyai"
       },
-      body: JSON.stringify({ model: "google/gemini-flash-1.5-8b", messages, max_tokens })
+      body: JSON.stringify({ model: "meta-llama/llama-3.2-3b-instruct:free", messages, max_tokens })
     });
     const parsed = await response.json();
     if (parsed.error) {
