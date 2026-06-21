@@ -10,7 +10,7 @@ import 'firebase/compat/firestore';
    ═══════════════════════════════════════════ */
 
 // OpenRouter API — via secure Netlify function (key hidden server-side)
-const AI_ENDPOINTS = ["/.netlify/functions/ai", "/api/ai"];
+const AI_ENDPOINTS = ["/api/ai"];
 async function aiCall(msgs, sys = "", tok = 1400) {
   // Build OpenRouter-compatible messages (supports images)
   const outMsgs = [];
