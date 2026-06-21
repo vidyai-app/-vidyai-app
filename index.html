@@ -66,10 +66,10 @@
   <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
 
   <!-- Babel Standalone (JSX transpiler) -->
-  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <!-- Vidyai App -->
-  <script type="text/babel" data-presets="react,env">
+  <script type="text/babel" data-presets="react">
 const { useState, useRef, useEffect } = React;
 
 
@@ -97,7 +97,7 @@ async function aiCall(msgs, sys = "", tok = 1400) {
       outMsgs.push({role: m.role||"user", content: m.content||""});
     }
   }
-  const r = await fetch("/api/ai", {
+  const r = await fetch("/.netlify/functions/ai", {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({messages: outMsgs, max_tokens: tok})
