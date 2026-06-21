@@ -490,6 +490,17 @@ function Vidyai() {
     }
   },[]);
 
+  // Emergency fallback: if still loading after 6 seconds, force splash
+  useEffect(() => {
+    const emergencyTimer = setTimeout(() => {
+      if(authSc === "loading") {
+        console.log("[Vidyai] EMERGENCY FALLBACK: Forcing splash screen");
+        setAuthSc("splash");
+      }
+    }, 6000);
+    return () => clearTimeout(emergencyTimer);
+  }, [authSc]);
+
   const doSignup=async()=>{
     setAErr("");
     if(!aName.trim()){setAErr("Please enter your full name");return;}
