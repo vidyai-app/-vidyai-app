@@ -56,7 +56,9 @@ const SR_API = window.SpeechRecognition || window.webkitSpeechRecognition;
 function speakText(txt, voice, onDone) {
   window.speechSynthesis.cancel();
   const clean = (txt||"").replace(/[✅❌🟡❓🎉⭐🔊🎙️⏹🏆🔁📄🌟💪📚🗣️🇺🇸🎓🎵🪞🎤📺💼☕🎭]/g,"").slice(0,700);
+  const isMal=/[\u0D00-\u0D7F]/.test(clean);
   const u = new SpeechSynthesisUtterance(clean);
+  u.lang=isMal?"ml-IN":"en-US";
   u.rate=0.88; u.pitch=1.0; u.volume=1;
   if (voice) u.voice=voice;
   if (onDone) u.onend=onDone;
