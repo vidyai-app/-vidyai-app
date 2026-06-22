@@ -631,7 +631,7 @@ function Vidyai() {
 
   // Voices
   useEffect(()=>{
-    const load=()=>{const vs=window.speechSynthesis.getVoices().filter(v=>v.lang.startsWith("en"));if(vs.length){setVoices(vs);setSelV(p=>p||(vs.find(v=>/female|zira|susan|karen|samantha|aria|jenny|siri/i.test(v.name))||vs[0])?.name||null);}};
+    const load=()=>{const vs=window.speechSynthesis.getVoices().filter(v=>v.lang.startsWith("en")||v.lang.startsWith("ml")||v.lang.startsWith("hi")||v.lang.startsWith("ta"));if(vs.length){setVoices(vs);setSelV(p=>p||(vs.find(v=>/female|zira|susan|karen|samantha|aria|jenny|siri/i.test(v.name))||vs[0])?.name||null);}};
     load();window.speechSynthesis.onvoiceschanged=load;
   },[]);
   const curV=voices.find(v=>v.name===selV)||voices[0]||null;
