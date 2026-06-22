@@ -870,6 +870,7 @@ function Vidyai() {
         });
         msgContent.push({type:"text",text:`You are an expert teacher. Carefully read this textbook image.
 
+First detect the language of the text in this image. Generate all questions and answers in that SAME language.
 TASK 1 — DETECT: Does this image contain existing Questions & Answers (like a question paper, exercise, or Q&A list)?
 - If YES → Extract those EXACT questions as written. Do not change wording. Extract up to ${qCnt} questions.
 - If NO → Create ${qCnt} professional exam-style questions based on the topic/content shown. Mix types: define, explain, compare, apply.
@@ -889,7 +890,7 @@ CONTENT:
 
 CONTENT:
 ${bookTxt.slice(0,6000)}`
-          : `You are an expert teacher. Create exactly ${qCnt} professional exam-style questions from this content. Mix types: define, explain, compare, apply. Return ONLY a JSON array: ["Q1?","Q2?",...] — no other text.
+          : `Detect the language of this content and generate questions in that SAME language. You are an expert teacher. Create exactly ${qCnt} professional exam-style questions from this content. Mix types: define, explain, compare, apply. Return ONLY a JSON array: ["Q1?","Q2?",...] — no other text.
 
 CONTENT:
 ${bookTxt.slice(0,6000)}`;
@@ -902,7 +903,7 @@ ${bookTxt.slice(0,6000)}`;
 
 CONTENT:
 ${urlTxt.slice(0,6000)}`
-          : `You are an expert teacher. Create exactly ${qCnt} professional exam-style questions from this content. Return ONLY a JSON array: ["Q1?","Q2?",...] — no other text.
+          : `Detect the language of this content and generate all questions in that SAME language. You are an expert teacher. Create exactly ${qCnt} professional exam-style questions from this content. Return ONLY a JSON array: ["Q1?","Q2?",...] — no other text.
 
 SOURCE: ${urlLink}
 CONTENT:
