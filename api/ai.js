@@ -15,7 +15,7 @@ export default async function handler(req, res) {
         "HTTP-Referer": "https://vidyai-app.vercel.app",
         "X-Title": "Vidyai"
       },
-      body: JSON.stringify({ model: "anthropic/claude-3.5-haiku", messages, max_tokens })
+      body: JSON.stringify({ model: "anthropic/claude-3-5-haiku", messages, max_tokens })
     });
     const parsed = await response.json();
     if (parsed.error) {
