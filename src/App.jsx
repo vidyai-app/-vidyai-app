@@ -655,6 +655,7 @@ function Vidyai() {
   const qRecRef=useRef(null);
   const fileRef=useRef(null);
   const pdfRef=useRef(null);
+  const camRef=useRef(null);
 
   /* STREAK STATE */
   const [streak,setStreak]=useState(0);
@@ -1620,6 +1621,8 @@ ${urlTxt.slice(0,6000)}`;
               <span style={{fontSize:11,fontWeight:800,padding:"3px 9px",borderRadius:99,background:`${T.a}18`,color:T.a}}>{isPro?"10":"3"} IMG</span>
             </div>
             <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={onImgs}/>
+            <div onClick={()=>camRef.current.click()} style={{display:"flex",gap:14,alignItems:"center",padding:"15px 16px",borderRadius:14,cursor:"pointer",border:`1px solid ${BDR}`,marginBottom:10,background:"transparent"}}><div style={{width:48,height:48,borderRadius:12,background:`${T.a}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0}}>📷</div><div style={{flex:1}}><div style={{fontWeight:700,fontSize:14,marginBottom:2}}>Take Photo</div><div style={{fontSize:12,color:C2}}>Open camera — capture directly</div></div><span style={{fontSize:11,fontWeight:800,padding:"3px 9px",borderRadius:99,background:`${T.a}18`,color:T.a}}>CAM</span></div>
+            <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={onImgs}/>
 
             {/* PDF — PRO only */}
             <div onClick={()=>{if(!isPro){goTo("sub");return;}pdfRef.current.click();}} style={{display:"flex",gap:14,alignItems:"center",padding:"15px 16px",borderRadius:14,cursor:"pointer",border:`1px solid ${isPro?T.a+"44":BDR}`,marginBottom:10,background:isPro?dk?`${T.a}06`:`${T.a}04`:"transparent"}}>
