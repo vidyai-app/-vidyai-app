@@ -2286,7 +2286,7 @@ ${urlTxt.slice(0,6000)}`;
 
       {!noFullNav&&(
         <footer style={{textAlign:"center",padding:"10px 20px",fontSize:11,color:C3,borderTop:`1px solid ${BDR}`}}>
-          ✦ Vidyai · Powered by <strong style={{color:T.a}}>Zoraak</strong> · © 2025 Mohammed Arshad V M · Patent Pending
+          ✦ Vidyai · Powered by <strong style={{color:T.a}}>Zoraak Technologies</strong> · © 2025 · Patent Pending
         </footer>
       )}
     </div>
