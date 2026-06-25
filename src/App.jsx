@@ -257,6 +257,207 @@ function AuthLogo() {
 }
 
 /* ═══════ MAIN APP ═══════ */
+
+/* ═══════ CRM PANEL COMPONENT ═══════ */
+const ACT_SECRET = "ZORAAK_VIDYAI_PRO_SECRET_2025_ARSHAD";
+
+async function crmGenCode(email, plan) {
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest("SHA-256", enc.encode(email.toLowerCase().trim()+plan+ACT_SECRET));
+  const hash = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("").slice(0,14).toUpperCase();
+  return plan+"-"+hash;
+}
+
+function crmGetExpiry(plan) {
+  const d = new Date();
+  if(plan==="1Y") d.setFullYear(d.getFullYear()+1);
+  else d.setMonth(d.getMonth()+6);
+  return d.toISOString().split("T")[0];
+}
+
+function CRMPanel({T,BDR,C1,C2,C3,dk,IBG,ghostBtn,inputStyle,primaryBtn,adminCfg}) {
+  const [crmTab,setCrmTab]=React.useState("generate");
+  const [crmPlan,setCrmPlan]=React.useState("6M");
+  const [crmName,setCrmName]=React.useState("");
+  const [crmEmail,setCrmEmail]=React.useState("");
+  const [crmPhone,setCrmPhone]=React.useState("");
+  const [crmAmount,setCrmAmount]=React.useState("");
+  const [crmCode,setCrmCode]=React.useState("");
+  const [crmMeta,setCrmMeta]=React.useState("");
+  const [crmCodeVisible,setCrmCodeVisible]=React.useState(false);
+  const [crmCustomers,setCrmCustomers]=React.useState([]);
+  const [crmMsg,setCrmMsg]=React.useState("");
+
+  React.useEffect(()=>{
+    const saved=JSON.parse(localStorage.getItem("vc_customers")||"[]");
+    setCrmCustomers(saved);
+  },[crmTab]);
+
+  const saveCust=(list)=>{localStorage.setItem("vc_customers",JSON.stringify(list));setCrmCustomers(list);};
+
+  const generateCode=async()=>{
+    if(!crmEmail||!crmEmail.includes("@")){setCrmMsg("⚠️ Valid email enter ചെയ്യൂ");return;}
+    const code=await crmGenCode(crmEmail,crmPlan);
+    const expiry=crmGetExpiry(crmPlan);
+    const planLabel=crmPlan==="6M"?"6 Months PRO":"1 Year PRO";
+    setCrmCode(code);
+    setCrmMeta(`${planLabel} · Expiry: ${expiry} · ${crmEmail}`);
+    setCrmCodeVisible(true);
+    const saved=JSON.parse(localStorage.getItem("vc_customers")||"[]");
+    const idx=saved.findIndex(c=>c.email===crmEmail);
+    const obj={name:crmName||crmEmail.split("@")[0],email:crmEmail,phone:crmPhone,plan:crmPlan,planLabel,expiry,amount:crmAmount,activated:new Date().toLocaleDateString("en-IN"),code};
+    if(idx>=0) saved[idx]=obj; else saved.unshift(obj);
+    saveCust(saved);
+    setCrmMsg("✅ Code generated & saved!");
+    setTimeout(()=>setCrmMsg(""),3000);
+  };
+
+  const sendWA=(code,cust)=>{
+    const msg=`🎉 Vidyai PRO Activation Code
+
+Hi ${cust.name||""}!
+
+Your Code: *${code}*
+Plan: ${cust.planLabel}
+Expiry: ${cust.expiry}
+
+To Activate:
+1. Open Vidyai app
+2. Go to ⭐ PRO page
+3. Enter Activation Code: *${code}*
+4. Tap 🔓 Activate PRO
+
+Enjoy! 🚀
+Support: vidyaisupport@gmail.com`;
+    const num=(cust.phone||adminCfg.waNumb||"").replace(/\D/g,"");
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
+  };
+
+  const deleteCust=(i)=>{
+    if(!window.confirm("Delete?")) return;
+    const saved=JSON.parse(localStorage.getItem("vc_customers")||"[]");
+    saved.splice(i,1);
+    saveCust(saved);
+  };
+
+  const now=new Date();
+  const card={background:dk?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.03)",border:`1px solid ${BDR}`,borderRadius:12,padding:"12px 14px",marginBottom:8};
+
+  return <div>
+    {/* CRM Tabs */}
+    <div style={{display:"flex",gap:6,marginBottom:14}}>
+      {[["generate","🎫 Generate"],["customers","👥 Customers"],["renewals","🔔 Renewals"]].map(([id,lb])=>(
+        <button key={id} onClick={()=>setCrmTab(id)} style={{flex:1,padding:"8px 4px",borderRadius:10,border:"none",background:crmTab===id?`linear-gradient(135deg,${T.a},${T.b})`:"rgba(255,255,255,0.06)",color:crmTab===id?"#fff":C3,fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>{lb}</button>
+      ))}
+    </div>
+
+    {/* GENERATE */}
+    {crmTab==="generate"&&<div>
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:11,color:C3,fontWeight:700,marginBottom:5}}>CUSTOMER NAME</div>
+        <input style={inputStyle} placeholder="Rahul Kumar" value={crmName} onChange={e=>setCrmName(e.target.value)}/>
+      </div>
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:11,color:C3,fontWeight:700,marginBottom:5}}>REGISTERED EMAIL ⚠️</div>
+        <input style={inputStyle} placeholder="customer@gmail.com" value={crmEmail} onChange={e=>setCrmEmail(e.target.value)}/>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:11,color:C3,fontWeight:700,marginBottom:5}}>WHATSAPP</div>
+          <input style={inputStyle} placeholder="919876543210" value={crmPhone} onChange={e=>setCrmPhone(e.target.value)}/>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:11,color:C3,fontWeight:700,marginBottom:5}}>AMOUNT</div>
+          <input style={inputStyle} placeholder="₹149" value={crmAmount} onChange={e=>setCrmAmount(e.target.value)}/>
+        </div>
+      </div>
+      <div style={{fontSize:11,color:C3,fontWeight:700,marginBottom:8}}>PLAN</div>
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        {[["6M","6 Months — ₹149"],["1Y","1 Year — ₹249"]].map(([p,lb])=>(
+          <button key={p} onClick={()=>setCrmPlan(p)} style={{flex:1,padding:"10px",borderRadius:10,border:`2px solid ${crmPlan===p?T.a:BDR}`,background:crmPlan===p?`${T.a}18`:"transparent",color:crmPlan===p?T.a:C3,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{lb}</button>
+        ))}
+      </div>
+      <button onClick={generateCode} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${T.a},${T.b})`,color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",marginBottom:10}}>⚡ Generate Code</button>
+      {crmMsg&&<div style={{fontSize:13,color:crmMsg.startsWith("✅")?"#34d399":"#f87171",fontWeight:700,marginBottom:10}}>{crmMsg}</div>}
+      {crmCodeVisible&&<div style={{background:dk?"#0a0f1a":"#f0f4f8",border:`2px solid ${T.a}`,borderRadius:14,padding:16,textAlign:"center"}}>
+        <div style={{fontSize:10,color:C3,fontWeight:700,letterSpacing:2,marginBottom:6}}>ACTIVATION CODE</div>
+        <div style={{fontFamily:"monospace",fontSize:22,fontWeight:900,color:T.a,letterSpacing:3,marginBottom:6}}>{crmCode}</div>
+        <div style={{fontSize:11,color:C3,marginBottom:14}}>{crmMeta}</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{navigator.clipboard.writeText(crmCode);setCrmMsg("📋 Copied!");setTimeout(()=>setCrmMsg(""),2000);}} style={{flex:1,padding:"10px",borderRadius:10,border:`1px solid ${BDR}`,background:"transparent",color:C2,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>📋 Copy</button>
+          <button onClick={()=>sendWA(crmCode,{name:crmName,phone:crmPhone,planLabel:crmPlan==="6M"?"6 Months PRO":"1 Year PRO",expiry:crmGetExpiry(crmPlan)})} style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"#25D366",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>💬 WhatsApp</button>
+        </div>
+      </div>}
+    </div>}
+
+    {/* CUSTOMERS */}
+    {crmTab==="customers"&&<div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontWeight:700,color:C1}}>{crmCustomers.length} customers</div>
+      </div>
+      {crmCustomers.length===0?<div style={{textAlign:"center",padding:30,color:C3}}>No customers yet</div>:
+      <div style={{maxHeight:340,overflowY:"auto"}}>
+        {crmCustomers.map((c,i)=>{
+          const days=Math.ceil((new Date(c.expiry)-now)/(1000*60*60*24));
+          return <div key={i} style={card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:13,color:C1}}>{c.name}</div>
+                <div style={{fontSize:11,color:C3}}>{c.email}</div>
+                <div style={{fontSize:11,color:days<0?"#f87171":days<=7?"#fbbf24":"#34d399",fontWeight:700,marginTop:4}}>{days<0?`Expired ${Math.abs(days)}d ago`:days<=7?`⚠️ ${days}d left`:`✅ ${days}d left`}</div>
+              </div>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                {c.phone&&<button onClick={()=>sendWA(c.code,c)} style={{padding:"5px 10px",borderRadius:8,border:"none",background:"#25D366",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>💬</button>}
+                <button onClick={()=>deleteCust(i)} style={{padding:"5px 10px",borderRadius:8,border:"1px solid rgba(248,113,113,0.3)",background:"transparent",color:"#f87171",fontSize:11,cursor:"pointer"}}>🗑</button>
+              </div>
+            </div>
+          </div>;
+        })}
+      </div>}
+    </div>}
+
+    {/* RENEWALS */}
+    {crmTab==="renewals"&&<div>
+      {(()=>{
+        const soon=crmCustomers.filter(c=>{const d=(new Date(c.expiry)-now)/(1000*60*60*24);return d>=0&&d<=7;});
+        const expired=crmCustomers.filter(c=>new Date(c.expiry)<now);
+        return <>
+          <div style={{fontWeight:700,color:"#fbbf24",marginBottom:8}}>⚠️ Expiring Soon ({soon.length})</div>
+          {soon.length===0?<div style={{color:C3,fontSize:13,marginBottom:16}}>No one expiring soon ✅</div>:
+          soon.map((c,i)=>{
+            const days=Math.ceil((new Date(c.expiry)-now)/(1000*60*60*24));
+            return <div key={i} style={{...card,borderColor:"rgba(251,191,36,0.3)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div><div style={{fontWeight:700,fontSize:13,color:C1}}>{c.name}</div><div style={{fontSize:11,color:C3}}>{c.email}</div></div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{color:"#fbbf24",fontWeight:800,fontSize:13}}>{days}d left</div>
+                  {c.phone&&<button onClick={()=>{const msg=`Hi ${c.name}! ⏰ Vidyai PRO expiring in ${days} days!
+Renew: vidyai-app.vercel.app`;window.open(`https://wa.me/${c.phone.replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`,"_blank");}} style={{marginTop:6,padding:"4px 10px",borderRadius:8,border:"none",background:"#25D366",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>💬 Remind</button>}
+                </div>
+              </div>
+            </div>;
+          })}
+          <div style={{fontWeight:700,color:"#f87171",marginBottom:8,marginTop:14}}>❌ Expired ({expired.length})</div>
+          {expired.length===0?<div style={{color:C3,fontSize:13}}>No expired customers ✅</div>:
+          expired.map((c,i)=>{
+            const days=Math.abs(Math.ceil((new Date(c.expiry)-now)/(1000*60*60*24)));
+            return <div key={i} style={{...card,borderColor:"rgba(248,113,113,0.3)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div><div style={{fontWeight:700,fontSize:13,color:C1}}>{c.name}</div><div style={{fontSize:11,color:C3}}>{c.email}</div></div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{color:"#f87171",fontWeight:800,fontSize:13}}>{days}d ago</div>
+                  {c.phone&&<button onClick={()=>{const msg=`Hi ${c.name}! Your Vidyai PRO expired. Renew now! 🚀
+vidyai-app.vercel.app`;window.open(`https://wa.me/${c.phone.replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`,"_blank");}} style={{marginTop:6,padding:"4px 10px",borderRadius:8,border:"none",background:"#25D366",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>💬 Remind</button>}
+                </div>
+              </div>
+            </div>;
+          })}
+        </>;
+      })()}
+    </div>}
+  </div>;
+}
+
 function Vidyai() {
   // ─── AUTH ───
   const [isPro,setIsPro]=useState(false);
@@ -1457,7 +1658,7 @@ ${urlTxt.slice(0,6000)}`;
           </div>:<div>
             {/* Admin Tabs */}
             <div style={{display:"flex",gap:8,marginBottom:16}}>
-              {[{id:"settings",label:"⚙️ Settings"},{id:"users",label:"👥 Users"}].map(t=>(
+              {[{id:"settings",label:"⚙️ Settings"},{id:"users",label:"👥 Users"},{id:"crm",label:"🎫 CRM"}].map(t=>(
                 <button key={t.id} onClick={()=>setAdminTab(t.id)} style={{flex:1,padding:"9px",borderRadius:10,border:"none",background:adminTab===t.id?`linear-gradient(135deg,${T.a},${T.b})`:"rgba(255,255,255,0.06)",color:adminTab===t.id?"#fff":C2,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{t.label}</button>
               ))}
             </div>
@@ -1516,6 +1717,7 @@ ${urlTxt.slice(0,6000)}`;
               </div>}
               <button onClick={()=>{setAdminUsersLd(true);fsAll("users").then(u=>{setAdminUsers(u);setAdminUsersLd(false);});}} style={{...ghostBtn,width:"100%",marginTop:10,textAlign:"center",fontSize:12}}>🔄 Refresh</button>
             </div>}
+            {adminTab==="crm"&&<CRMPanel T={T} BDR={BDR} C1={C1} C2={C2} C3={C3} dk={dk} IBG={IBG} ghostBtn={ghostBtn} inputStyle={inputStyle} primaryBtn={primaryBtn} adminCfg={adminCfg}/>}
           </div>}
         </div>
       </div>}
