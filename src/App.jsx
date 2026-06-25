@@ -1011,7 +1011,7 @@ ${urlTxt.slice(0,6000)}`;
     setGkLd(false);
   };
 
-  const nextGK=()=>{const nx=gkPos+1;setGkFb("");setGkRes(null);setGkTr("");setGkTxt("");if(nx>=gkQ.length){setGkPh("done");return;}setGkPos(nx);setTimeout(()=>readQ(gkQ[nx].q),300);};
+  const nextGK=()=>{const nx=gkPos+1;setGkFb("");setGkRes(null);setGkTr("");setGkTxt("");if(nx>=gkQ.length){setGkPh("done");const uid=fbAuth.currentUser?.uid;if(uid){loadUserData(uid).then(d=>{const prev=d?.gkTopicsDone||0;saveUserData(uid,{gkTopicsDone:prev+1});setGkTopicsDone(prev+1);});}return;}setGkPos(nx);setTimeout(()=>readQ(gkQ[nx].q),300);};
 
   /* Mock */
   const startMock=async(scen)=>{
@@ -1143,12 +1143,34 @@ ${urlTxt.slice(0,6000)}`;
   const [showDelConf,setShowDelConf]=useState(false);
   const [totalSessions,setTotalSessions]=useState(0);
   const [totalQAnswered,setTotalQAnswered]=useState(0);
+  const [gkTopicsDone,setGkTopicsDone]=useState(0);
+
+  // Load stats from Firebase on login
+  useEffect(()=>{
+    if(!curUser?.uid) return;
+    (async()=>{
+      const uid=curUser.uid;
+      const d=await loadUserData(uid);
+      if(d?.totalSessions) setTotalSessions(d.totalSessions);
+      if(d?.totalQAnswered) setTotalQAnswered(d.totalQAnswered);
+      if(d?.gkTopicsDone) setGkTopicsDone(d.gkTopicsDone);
+    })();
+  },[curUser?.uid]);
 
   // Update stats whenever a quiz finishes
   useEffect(()=>{
     if(qPh==="done"){
-      setTotalSessions(s=>s+1);
-      setTotalQAnswered(s=>s+qAsk);
+      const uid=fbAuth.currentUser?.uid;
+      setTotalSessions(s=>{
+        const n=s+1;
+        if(uid) saveUserData(uid,{totalSessions:n});
+        return n;
+      });
+      setTotalQAnswered(s=>{
+        const n=s+qAsk;
+        if(uid) saveUserData(uid,{totalQAnswered:n});
+        return n;
+      });
     }
   },[qPh]);
 
@@ -2201,7 +2223,7 @@ ${urlTxt.slice(0,6000)}`;
                 {ic:"🔥",label:"Day Streak",val:streak||0},
                 {ic:"❓",label:"Questions Done",val:totalQAnswered},
                 {ic:"⭐",label:"Total Points",val:totalPts},
-                {ic:"🌍",label:"GK Topics Done",val:gkSc>0?Math.ceil(gkSc/5):0},
+                {ic:"🌍",label:"GK Topics Done",val:gkTopicsDone},
               ].map(s=>(
                 <div key={s.label} style={{background:IBG,borderRadius:14,padding:"14px 16px",border:`1px solid ${BDR}`,textAlign:"center"}}>
                   <div style={{fontSize:26,marginBottom:6}}>{s.ic}</div>
